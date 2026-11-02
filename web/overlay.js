@@ -282,6 +282,7 @@ function onFrame() {
 video.requestVideoFrameCallback(onFrame);
 
 let source = 'camera', sourceError = '', devices = [], sourceRun = 0, retryTimer;
+const NO_ANSWER = 'Esta cámara no responde. Elige otra en la lista.';
 
 const sendStatus = () => chan.postMessage({ status: { source, sourceError, devices, deviceId: S.deviceId } });
 
@@ -295,36 +296,51 @@ function stopSource() {
   draw(); // without new frames the last windows would stay frozen on screen
 }
 
-async function useCamera() {
-  stopSource();
-  source = 'camera';
-  const run = ++sourceRun;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { deviceId: S.deviceId ? { ideal: S.deviceId } : undefined, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-    });
-    if (run !== sourceRun) { stream.getTracks().forEach(t => t.stop()); return; }
-    video.srcObject = stream;
-    await video.play();
-    sourceError = '';
-  } catch (e) {
-    if (run !== sourceRun) return;
-    if (e.name === 'NotFoundError') sourceError = 'No hay ninguna cámara conectada.';
-    else if (e.name === 'NotReadableError') {
-      sourceError = 'La cámara está ocupada por otra app (Cámara, Discord…). Arrancará sola cuando la cierres.';
-      retryTimer = setTimeout(useCamera, 2000); // nothing announces that a camera got free
-    } else sourceError = `Sin cámara: ${e.message}`;
-  }
+async function listDevices() {
   devices = (await navigator.mediaDevices.enumerateDevices())
     .filter(d => d.kind === 'videoinput')
     .map(d => ({ id: d.deviceId, label: d.label || 'Cámara' }));
   sendStatus();
 }
 
+async function useCamera() {
+  stopSource();
+  source = 'camera';
+  const run = ++sourceRun;
+  // A dying webcam can leave this hanging forever, and the panel must still offer the other cameras.
+  retryTimer = setTimeout(() => {
+    sourceError = NO_ANSWER;
+    listDevices();
+  }, 5000);
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      // exact: with ideal, Chromium opened a broken webcam instead of the camera the user chose.
+      video: { deviceId: S.deviceId ? { exact: S.deviceId } : undefined, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+    });
+    if (run !== sourceRun) { stream.getTracks().forEach(t => t.stop()); return; }
+    video.srcObject = stream;
+    await video.play();
+    clearTimeout(retryTimer);
+    sourceError = '';
+  } catch (e) {
+    if (run !== sourceRun) return;
+    clearTimeout(retryTimer);
+    if (e.name === 'NotFoundError') sourceError = 'No hay ninguna cámara conectada.';
+    else if (e.name === 'OverconstrainedError') sourceError = 'Esa cámara ya no está. Elige otra en la lista.';
+    else if (e.name === 'AbortError') sourceError = NO_ANSWER;
+    else if (e.name === 'NotReadableError') {
+      sourceError = 'La cámara está ocupada por otra app (Cámara, Discord…). Arrancará sola cuando la cierres.';
+      retryTimer = setTimeout(useCamera, 2000); // nothing announces that a camera got free
+    } else sourceError = `Sin cámara: ${e.message}`;
+  }
+  await listDevices();
+}
+
 // A webcam plugged in or pulled out while the app is open.
 navigator.mediaDevices.ondevicechange = () => {
   if (source === 'camera' && !video.srcObject?.active) useCamera();
+  else listDevices();
 };
 
 async function useVideo(url) {
