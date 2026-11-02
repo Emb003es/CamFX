@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+<meta charset="utf-8">
+<title>CamFX</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  /* rVFC needs the video in the page; 1px and invisible keeps its GPU decode path */
+  video { position: fixed; width: 1px; height: 1px; opacity: 0; }
+</style>
+<video id="v" muted playsinline></video>
+<canvas id="c"></canvas>
+<script src="logic.js"></script>
+<script src="overlay.js"></script>
+</html>

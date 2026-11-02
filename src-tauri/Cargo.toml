@@ -1,0 +1,19 @@
+[package]
+name = "camfx"
+version = "0.1.0"
+description = "Efectos con la cámara"
+authors = ["Embo"]
+edition = "2024"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["custom-protocol"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

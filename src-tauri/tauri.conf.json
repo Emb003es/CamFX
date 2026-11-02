@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CamFX",
+  "version": "0.1.0",
+  "identifier": "com.embo.camfx",
+  "build": { "frontendDist": "../web" },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; media-src 'self' blob: mediastream:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self'"
+    },
+    "windows": [
+      {
+        "label": "overlay",
+        "url": "overlay.html",
+        "title": "CamFX",
+        "transparent": true,
+        "decorations": false,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "focus": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --use-fake-ui-for-media-stream"
+      },
+      {
+        "label": "panel",
+        "url": "panel.html",
+        "title": "CamFX",
+        "width": 290,
+        "height": 610,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "theme": "Dark",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --use-fake-ui-for-media-stream"
+      }
+    ]
+  },
+  "bundle": { "active": false, "icon": ["icons/icon.ico"] }
+}

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<title>CamFX</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 10px 14px 14px; background: #1e1e20; color: #e4e4e6; font: 12px "Segoe UI", system-ui, sans-serif; user-select: none; }
+  #stat { margin: 0 0 8px; min-height: 30px; font: 11px Consolas, monospace; color: #5fe08a; white-space: pre-wrap; }
+  h2 { margin: 12px 0 6px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #8e8e93; font-weight: 600; }
+  label { display: flex; align-items: center; gap: 7px; padding: 3px 0; }
+  .sub { display: grid; grid-template-columns: 1fr 1fr; padding-left: 20px; }
+  .slider { display: block; padding-left: 20px; color: #a9a9ae; }
+  input[type=range] { display: block; width: 100%; margin: 2px 0 4px; accent-color: #0a84ff; }
+  input[type=checkbox], input[type=radio] { margin: 0; accent-color: #0a84ff; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; margin-bottom: 6px; background: #2c2c2f; border-radius: 6px; }
+  .tabs button { padding: 3px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; }
+  .tabs button:focus-visible, input:focus-visible { outline: 2px solid #0a84ff; outline-offset: 1px; }
+  .tabs button.on { background: #55555a; }
+  #cams span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #error { margin: 4px 0; color: #ff6961; }
+  #file { width: 100%; font: inherit; }
+</style>
+<pre id="stat" aria-live="off">Arrancando…</pre>
+
+<h2>Origen</h2>
+<div class="tabs">
+  <button id="tabCam">Cámara</button>
+  <button id="tabVid">Vídeo</button>
+</div>
+<div id="paneCam"><div id="cams"></div></div>
+<div id="paneVid" hidden><input id="file" type="file" accept="video/*" aria-label="Elegir vídeo"></div>
+<div id="error" role="alert"></div>
+
+<h2>Seguimiento</h2>
+<label><input type="checkbox" id="faceBody"> Cara y cuerpo</label>
+<div class="sub">
+  <label><input type="checkbox" data-k="face"> Cara</label>
+  <label><input type="checkbox" data-k="body"> Cuerpo</label>
+  <label><input type="checkbox" data-k="eyes"> Ojos</label>
+  <label><input type="checkbox" data-k="mouth"> Boca</label>
+</div>
+<label><input type="checkbox" data-k="threshold"> Umbral</label>
+<label class="slider">Brillo mínimo<input type="range" data-k="level" min="0.2" max="0.98" step="0.01"></label>
+<label><input type="checkbox" data-k="motion"> Movimiento</label>
+<label class="slider">Sensibilidad<input type="range" data-k="sensitivity" min="0" max="1" step="0.01"></label>
+<label class="slider">Tamaño mínimo<input type="range" data-k="minSize" min="0" max="1" step="0.01"></label>
+
+<h2>Pantalla</h2>
+<label><input type="checkbox" data-k="windowed"> Modo ventana</label>
+<label><input type="checkbox" data-k="mirror"> Espejo</label>
+<label><input type="checkbox" data-k="labels"> Etiquetas</label>
+<label class="slider">Longitud de estela<input type="range" data-k="trail" min="0" max="15" step="1"></label>
+<script src="logic.js"></script>
+<script src="panel.js"></script>
+</html>
