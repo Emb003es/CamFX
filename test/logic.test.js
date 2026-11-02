@@ -1,7 +1,17 @@
 // node --test test/logic.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { findBlobs, matchTracks, stepTracks, TTL, MAX_TRACKS } = require('../web/logic.js');
+const { findBlobs, matchTracks, stepTracks, coverScale, hexToRgb, TTL, MAX_TRACKS } = require('../web/logic.js');
+
+test('a background covers the frame and only crops the axis that overflows', () => {
+  assert.deepStrictEqual(coverScale(1920, 1080, 1920, 1080), [1, 1]);
+  assert.deepStrictEqual(coverScale(1920, 1080, 1080, 1920).map(v => +v.toFixed(4)), [1, 0.3164]); // tall photo: crop height
+  assert.deepStrictEqual(coverScale(1080, 1080, 1920, 1080), [0.5625, 1]);                         // wide photo: crop width
+});
+
+test('hex colours become 0..1 channels', () => {
+  assert.deepStrictEqual(hexToRgb('#ff0033'), [1, 0, 0.2]);
+});
 
 function mask(W, H, rects) {
   const m = new Uint8Array(W * H);

@@ -2,6 +2,9 @@
 const S = loadSettings();
 const chan = new BroadcastChannel('camfx');
 const video = document.getElementById('v'), canvas = document.getElementById('c');
+const isStage = top !== self; // in the app's preview: a fixed output size, whatever the window measures
+const OUT_W = 1920, OUT_H = 1080;
+if (isStage) document.documentElement.style.background = '#000'; // or the letterbox bars show up white
 const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false });
 
 const VS = `#version 300 es
@@ -65,9 +68,25 @@ void main() {
   o = vec4(col * a, a);
 }`;
 
-function compile() {
+const BG_VS = `#version 300 es
+uniform vec2 scale;
+out vec2 uv;
+void main() {
+  vec2 s = vec2(gl_VertexID & 1, gl_VertexID >> 1) * 4. - 1.; // one triangle over the whole frame
+  uv = vec2(s.x, -s.y) * .5 * scale + .5;
+  gl_Position = vec4(s, 0., 1.);
+}`;
+
+const BG_FS = `#version 300 es
+precision highp float;
+in vec2 uv;
+uniform sampler2D bg;
+out vec4 o;
+void main() { o = vec4(texture(bg, uv).rgb, 1.); }`;
+
+function compile(vs, fs) {
   const prog = gl.createProgram();
-  for (const [type, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, FS]]) {
+  for (const [type, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
     const sh = gl.createShader(type);
     gl.shaderSource(sh, src);
     gl.compileShader(sh);
@@ -79,7 +98,10 @@ function compile() {
   return prog;
 }
 
-const prog = compile();
+const bgProg = compile(BG_VS, BG_FS);
+gl.useProgram(bgProg);
+gl.uniform1i(gl.getUniformLocation(bgProg, 'bg'), 3);
+const prog = compile(VS, FS);
 gl.useProgram(prog);
 const U = {};
 for (const name of ['screen', 'margin', 'live', 'titles', 'ring', 'cam', 'mirror', 'bar', 'unit', 'titleW', 'rows', 'lightsEnd']) {
@@ -101,13 +123,14 @@ const RING_W = 960, RING_H = 540;
 const live = texture(0, gl.TEXTURE_2D);
 const ring = texture(1, gl.TEXTURE_2D_ARRAY);
 gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, RING_W, RING_H, HIST);
+texture(3, gl.TEXTURE_2D); // background image or video
 const readFb = gl.createFramebuffer(), drawFb = gl.createFramebuffer();
 gl.uniform1i(U.live, 0);
 gl.uniform1i(U.ring, 1);
 gl.uniform1i(U.titles, 2);
 
 // Title bar sizes, all in device pixels.
-const unit = devicePixelRatio;
+const unit = isStage ? 1 : devicePixelRatio;
 const bar = 24 * unit, lightsEnd = 61 * unit, titleW = 150 * unit, margin = 28 * unit;
 const minW = 76 * unit, minH = 22 * unit;
 
@@ -164,9 +187,9 @@ const cam = { x: 0, y: 0, w: 1, h: 1 };
 
 function layout() {
   // shortcut: reloading drops a video source back to the camera, fine for moving to a monitor with another scale
-  if (devicePixelRatio !== unit) location.reload();
-  canvas.width = innerWidth * unit;
-  canvas.height = innerHeight * unit;
+  if (!isStage && devicePixelRatio !== unit) location.reload();
+  canvas.width = isStage ? OUT_W : innerWidth * unit;
+  canvas.height = isStage ? OUT_H : innerHeight * unit;
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.uniform2f(U.screen, canvas.width, canvas.height);
   if (!video.videoWidth) return;
@@ -230,11 +253,24 @@ function draw() {
     }
     put(t.x, t.y, t.w, t.h, -1, t.kind);
   }
-  if (!count && !hadWindows) return; // an empty layer stays as it is: nothing to composite
+  if (S.bg === 'desktop' && !count && !hadWindows) return; // an empty layer stays as it is: nothing to composite
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, inst, 0, count * STRIDE);
   gl.uniform1f(U.mirror, S.mirror ? 1 : 0);
+  if (S.bg === 'desktop') gl.clearColor(0, 0, 0, 0);
+  else gl.clearColor(...hexToRgb(S.bgColor), 1);
   gl.clear(gl.COLOR_BUFFER_BIT);
+  if (S.bg === 'file' && bgReady) drawBackground();
   gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+}
+
+function drawBackground() {
+  if (bgVideo.src && bgVideo.readyState >= 2) {
+    gl.activeTexture(gl.TEXTURE3);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bgVideo);
+  }
+  gl.useProgram(bgProg);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.useProgram(prog);
 }
 
 const worker = new Worker('tracker.worker.js');
@@ -283,8 +319,57 @@ video.requestVideoFrameCallback(onFrame);
 
 let source = 'camera', sourceError = '', devices = [], sourceRun = 0, retryTimer;
 const NO_ANSWER = 'Esta cámara no responde. Elige otra en la lista.';
+const NO_PICTURE = 'Este vídeo no tiene imagen que se pueda leer. Suele pasar con HEVC/H.265, el formato del iPhone: usa un MP4 H.264.';
 
-const sendStatus = () => chan.postMessage({ status: { source, sourceError, devices, deviceId: S.deviceId } });
+const bgVideo = document.createElement('video');
+bgVideo.muted = bgVideo.loop = true;
+let bgReady = false, bgError = '', bgRun = 0, bgUrl = '';
+
+const sendStatus = () => chan.postMessage({ status: { source, sourceError, devices, deviceId: S.deviceId, bgError } });
+
+function fitBackground(w, h) {
+  gl.useProgram(bgProg);
+  gl.uniform2f(gl.getUniformLocation(bgProg, 'scale'), ...coverScale(canvas.width, canvas.height, w, h));
+  gl.useProgram(prog);
+  bgReady = true;
+}
+
+async function loadBackground() {
+  const run = ++bgRun;
+  bgReady = false;
+  bgError = '';
+  bgVideo.pause();
+  bgVideo.removeAttribute('src');
+  URL.revokeObjectURL(bgUrl);
+  if (S.bg === 'file') try {
+    const file = await bgStore('readonly');
+    if (run !== bgRun) return;
+    if (file) {
+      bgUrl = URL.createObjectURL(file);
+      if (file.type.startsWith('video/')) {
+        bgVideo.src = bgUrl;
+        await bgVideo.play();
+        if (run !== bgRun) return;
+        if (!bgVideo.videoWidth) throw new Error(NO_PICTURE);
+        fitBackground(bgVideo.videoWidth, bgVideo.videoHeight);
+      } else {
+        const img = new Image();
+        img.src = bgUrl;
+        await img.decode();
+        if (run !== bgRun) return;
+        gl.activeTexture(gl.TEXTURE3);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        fitBackground(img.naturalWidth, img.naturalHeight);
+      }
+    }
+  } catch (e) {
+    if (run !== bgRun) return;
+    bgVideo.removeAttribute('src');
+    bgError = e.message === NO_PICTURE ? NO_PICTURE : `No se puede abrir el fondo: ${e.message}`;
+  }
+  sendStatus();
+  draw();
+}
 
 function stopSource() {
   clearTimeout(retryTimer);
@@ -356,7 +441,7 @@ async function useVideo(url) {
     // An undecodable picture raises no error: the audio just plays on, with no frames ever.
     if (!video.videoWidth) {
       stopSource();
-      sourceError = 'Este vídeo no tiene imagen que se pueda leer. Suele pasar con HEVC/H.265, el formato del iPhone: usa un MP4 H.264.';
+      sourceError = NO_PICTURE;
     }
   } catch (e) {
     if (run !== sourceRun) return;
@@ -366,17 +451,19 @@ async function useVideo(url) {
 }
 
 chan.onmessage = ({ data }) => {
-  if (data.hello) sendStatus();
   if (data.useCamera) useCamera();
   if (data.useVideo) useVideo(data.useVideo);
   if (data.settings) {
     const changedDevice = data.settings.deviceId !== S.deviceId;
+    const changedBg = data.settings.bg !== S.bg || data.settings.bgStamp !== S.bgStamp;
     Object.assign(S, data.settings);
-    document.body.style.background = S.windowed ? '#000' : 'transparent';
     for (let i = tracks.length - 1; i >= 0; i--) if (!S[tracks[i].kind]) tracks.splice(i, 1);
     if (changedDevice && source === 'camera') useCamera();
+    if (changedBg) loadBackground();
+    else draw();
   }
 };
 
-document.body.style.background = S.windowed ? '#000' : 'transparent';
+loadBackground();
 useCamera();
+chan.postMessage({ ready: true });

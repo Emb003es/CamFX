@@ -7,11 +7,23 @@
   "app": {
     "withGlobalTauri": true,
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; media-src 'self' blob: mediastream:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self'"
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; media-src 'self' blob: mediastream:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self'"
     },
     "windows": [
       {
+        "label": "panel",
+        "url": "panel.html",
+        "title": "CamFX",
+        "width": 1180,
+        "height": 740,
+        "minWidth": 340,
+        "minHeight": 560,
+        "theme": "Dark",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion --use-fake-ui-for-media-stream"
+      },
+      {
         "label": "overlay",
+        "create": false,
         "url": "overlay.html",
         "title": "CamFX",
         "transparent": true,
@@ -21,18 +33,7 @@
         "skipTaskbar": true,
         "resizable": false,
         "focus": false,
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --use-fake-ui-for-media-stream"
-      },
-      {
-        "label": "panel",
-        "url": "panel.html",
-        "title": "CamFX",
-        "width": 290,
-        "height": 610,
-        "resizable": false,
-        "alwaysOnTop": true,
-        "theme": "Dark",
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --use-fake-ui-for-media-stream"
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion --use-fake-ui-for-media-stream"
       }
     ]
   },

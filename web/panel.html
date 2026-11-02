@@ -3,54 +3,189 @@
 <meta charset="utf-8">
 <title>CamFX</title>
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    color-scheme: dark;
+    --ground: #0d0d0f; --surface: #17171a; --raised: #222226; --line: #2e2e33;
+    --text: #efeff1; --muted: #92929b; --accent: #c8f04c; --on-accent: #12140a; --rec: #ff4d43; --err: #ff8078;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 10px 14px 14px; background: #1e1e20; color: #e4e4e6; font: 12px "Segoe UI", system-ui, sans-serif; user-select: none; }
-  #stat { margin: 0 0 8px; min-height: 30px; font: 11px Consolas, monospace; color: #5fe08a; white-space: pre-wrap; }
-  h2 { margin: 12px 0 6px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #8e8e93; font-weight: 600; }
-  label { display: flex; align-items: center; gap: 7px; padding: 3px 0; }
-  .sub { display: grid; grid-template-columns: 1fr 1fr; padding-left: 20px; }
-  .slider { display: block; padding-left: 20px; color: #a9a9ae; }
-  input[type=range] { display: block; width: 100%; margin: 2px 0 4px; accent-color: #0a84ff; }
-  input[type=checkbox], input[type=radio] { margin: 0; accent-color: #0a84ff; }
-  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; margin-bottom: 6px; background: #2c2c2f; border-radius: 6px; }
-  .tabs button { padding: 3px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; }
-  .tabs button:focus-visible, input:focus-visible { outline: 2px solid #0a84ff; outline-offset: 1px; }
-  .tabs button.on { background: #55555a; }
-  #cams span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #error { margin: 4px 0; color: #ff6961; }
-  #file { width: 100%; font: inherit; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; display: grid; grid-template-columns: 256px minmax(0, 1fr) 272px;
+    background: var(--ground); color: var(--text);
+    font: 13px/1.35 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; user-select: none;
+  }
+  button, select, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .side { padding: 16px; background: var(--surface); overflow-y: auto; }
+  .side:first-of-type { border-right: 1px solid var(--line); }
+  .side:last-of-type { border-left: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 18px; font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+  .brand svg { display: block; }
+  h2 { margin: 20px 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  h2:first-of-type { margin-top: 0; }
+
+  .effect {
+    display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px; text-align: left;
+    background: var(--raised); border: 1px solid var(--accent); border-radius: 10px;
+  }
+  .effect svg { flex: none; display: block; border-radius: 6px; }
+  .effect b { display: block; font-weight: 600; }
+  .effect small { display: block; font-size: 11.5px; color: var(--muted); }
+
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; margin-bottom: 8px; background: var(--ground); border-radius: 9px; }
+  .seg button { padding: 5px 4px; border: 0; border-radius: 7px; background: none; color: var(--muted); }
+  .seg button:hover { color: var(--text); }
+  .seg button.on { background: var(--raised); color: var(--text); }
+
+  select { width: 100%; padding: 6px 8px; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; }
+  .file { display: block; position: relative; padding: 7px; text-align: center; background: var(--raised); border: 1px dashed #4a4a52; border-radius: 8px; }
+  .file:hover { border-color: var(--accent); }
+  .file:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .file input { position: absolute; inset: 0; opacity: 0; width: 100%; }
+  small#bgName { display: block; margin-top: 6px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  input[type=color] { width: 44px; height: 26px; padding: 2px; background: var(--raised); border: 1px solid var(--line); border-radius: 7px; }
+  .hint { margin: 0; color: var(--muted); }
+  .err { margin-top: 6px; color: var(--err); user-select: text; }
+  .err:empty { display: none; }
+
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+  .sub { padding-left: 12px; border-left: 1px solid var(--line); margin-bottom: 4px; }
+  .group { margin-bottom: 4px; }
+  .group:has(> .row input:not(:checked)) .slider { opacity: .4; }
+  input[type=checkbox] {
+    appearance: none; flex: none; position: relative; width: 30px; height: 18px; margin: 0;
+    background: #3a3a40; border-radius: 9px; transition: background .15s;
+  }
+  input[type=checkbox]::before {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+    background: #d2d2d7; border-radius: 50%; transition: transform .15s;
+  }
+  input[type=checkbox]:checked { background: var(--accent); }
+  input[type=checkbox]:checked::before { transform: translateX(12px); background: var(--on-accent); }
+  input[type=checkbox]:indeterminate { background: #717f3c; }
+  input[type=checkbox]:indeterminate::before { transform: translateX(6px); }
+
+  .slider { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 4px 0 8px; color: var(--muted); }
+  .slider output { font-variant-numeric: tabular-nums; color: var(--text); }
+  .slider input { grid-column: 1 / -1; }
+  input[type=range] { appearance: none; display: block; width: 100%; height: 18px; margin: 0; background: none; --p: 50%; }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) var(--p), #3a3a40 var(--p)); }
+  input[type=range]::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; margin-top: -5px; background: var(--text); border-radius: 50%; }
+
+  .center { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; min-height: 0; }
+  .stage { display: flex; align-items: center; min-height: 0; padding: 16px 16px 0; }
+  #stage { display: block; width: 100%; max-height: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 10px; background: #000; }
+  .rec #stage { box-shadow: 0 0 0 2px var(--rec); }
+  .transport { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 16px; }
+  #rec {
+    display: flex; align-items: center; gap: 8px; padding: 8px 15px 8px 12px; font-weight: 600;
+    background: var(--raised); border: 1px solid var(--line); border-radius: 22px;
+  }
+  #rec:hover { border-color: var(--rec); }
+  #rec::before { content: ""; width: 11px; height: 11px; background: var(--rec); border-radius: 50%; }
+  .rec #rec::before { border-radius: 2px; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .rec #rec::before { animation: none; } }
+  #time { font-variant-numeric: tabular-nums; font-size: 15px; min-width: 42px; }
+  .rec #time { color: var(--rec); }
+  .micro { display: flex; align-items: center; gap: 7px; color: var(--muted); min-width: 0; flex: 0 1 230px; }
+  #stat { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #saved { flex-basis: 100%; display: flex; align-items: center; gap: 10px; color: var(--muted); min-width: 0; }
+  #saved span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+  #saved button { flex: none; padding: 3px 10px; background: none; border: 1px solid var(--line); border-radius: 7px; color: var(--text); }
+  #saved button:hover { border-color: var(--accent); }
+
+  /* Narrow window, and always over the desktop: one scrolling column of controls. */
+  @media (max-width: 860px) {
+    html, body { height: auto; }
+    body { display: block; }
+    .side { overflow: visible; border: 0 !important; }
+    .transport { border-block: 1px solid var(--line); background: var(--ground); }
+  }
+  .desktop .stage { display: none; }
 </style>
-<pre id="stat" aria-live="off">Arrancando…</pre>
 
-<h2>Origen</h2>
-<div class="tabs">
-  <button id="tabCam">Cámara</button>
-  <button id="tabVid">Vídeo</button>
-</div>
-<div id="paneCam"><div id="cams"></div></div>
-<div id="paneVid" hidden><input id="file" type="file" accept="video/*" aria-label="Elegir vídeo"></div>
-<div id="error" role="alert"></div>
+<aside class="side">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x="1" y="4" width="14" height="11" rx="3" fill="#c8f04c" opacity=".4"/><rect x="7" y="8" width="14" height="11" rx="3" fill="#c8f04c"/></svg>
+    CamFX
+  </div>
 
-<h2>Seguimiento</h2>
-<label><input type="checkbox" id="faceBody"> Cara y cuerpo</label>
-<div class="sub">
-  <label><input type="checkbox" data-k="face"> Cara</label>
-  <label><input type="checkbox" data-k="body"> Cuerpo</label>
-  <label><input type="checkbox" data-k="eyes"> Ojos</label>
-  <label><input type="checkbox" data-k="mouth"> Boca</label>
-</div>
-<label><input type="checkbox" data-k="threshold"> Umbral</label>
-<label class="slider">Brillo mínimo<input type="range" data-k="level" min="0.2" max="0.98" step="0.01"></label>
-<label><input type="checkbox" data-k="motion"> Movimiento</label>
-<label class="slider">Sensibilidad<input type="range" data-k="sensitivity" min="0" max="1" step="0.01"></label>
-<label class="slider">Tamaño mínimo<input type="range" data-k="minSize" min="0" max="1" step="0.01"></label>
+  <h2>Efectos</h2>
+  <button class="effect" aria-pressed="true">
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <rect width="44" height="44" fill="#0d0d0f"/>
+      <g fill="#3a3a40"><rect x="5" y="7" width="20" height="16" rx="2.5"/></g>
+      <rect x="14" y="17" width="25" height="20" rx="2.5" fill="#c8f04c"/>
+      <rect x="14" y="17" width="25" height="5" rx="2.5" fill="#55602a"/>
+      <g fill="#d6e89a"><circle cx="17.5" cy="19.5" r="1"/><circle cx="20.8" cy="19.5" r="1"/><circle cx="24.1" cy="19.5" r="1"/></g>
+    </svg>
+    <span><b>Ventanas flotantes</b><small>Siguen tu cara y tu movimiento</small></span>
+  </button>
 
-<h2>Pantalla</h2>
-<label><input type="checkbox" data-k="windowed"> Modo ventana</label>
-<label><input type="checkbox" data-k="mirror"> Espejo</label>
-<label><input type="checkbox" data-k="labels"> Etiquetas</label>
-<label class="slider">Longitud de estela<input type="range" data-k="trail" min="0" max="15" step="1"></label>
+  <h2>Origen</h2>
+  <div class="seg" role="group" aria-label="Origen">
+    <button id="tabCam">Cámara</button>
+    <button id="tabVid">Vídeo</button>
+  </div>
+  <div id="paneCam"><select id="cams" aria-label="Cámara"></select></div>
+  <div id="paneVid" hidden><label class="file">Elegir vídeo…<input id="file" type="file" accept="video/*"></label></div>
+  <div id="error" class="err" role="alert"></div>
+
+  <h2>Fondo</h2>
+  <div class="seg" role="group" aria-label="Fondo">
+    <button data-bg="color">Color</button>
+    <button data-bg="file">Archivo</button>
+    <button data-bg="desktop">Escritorio</button>
+  </div>
+  <label id="paneColor" class="row">Color de fondo <input id="bgColor" type="color"></label>
+  <div id="paneFile">
+    <label class="file">Elegir imagen o vídeo…<input id="bgFile" type="file" accept="image/*,video/*"></label>
+    <small id="bgName"></small>
+  </div>
+  <p id="paneDesktop" class="hint">Las ventanas flotan sobre tu escritorio. Minimiza CamFX si te estorba.</p>
+  <div id="bgError" class="err" role="alert"></div>
+</aside>
+
+<main class="center">
+  <div class="stage"><iframe id="stage" title="Vista previa"></iframe></div>
+  <div class="transport">
+    <button id="rec">Grabar</button>
+    <span id="time">00:00</span>
+    <label class="micro">Sonido <select id="mic"></select></label>
+    <span id="stat" aria-live="off">Arrancando…</span>
+    <div id="saved" hidden><span id="savedPath"></span><button id="reveal">Abrir carpeta</button></div>
+    <div id="recError" class="err" role="alert"></div>
+  </div>
+</main>
+
+<aside class="side">
+  <h2>Seguimiento</h2>
+  <label class="row">Cara y cuerpo <input type="checkbox" id="faceBody"></label>
+  <div class="sub">
+    <label class="row">Cara <input type="checkbox" data-k="face"></label>
+    <label class="row">Cuerpo <input type="checkbox" data-k="body"></label>
+    <label class="row">Ojos <input type="checkbox" data-k="eyes"></label>
+    <label class="row">Boca <input type="checkbox" data-k="mouth"></label>
+  </div>
+  <div class="group">
+    <label class="row">Umbral <input type="checkbox" data-k="threshold"></label>
+    <label class="slider"><span>Brillo mínimo</span><output></output><input type="range" data-k="level" min="0.2" max="0.98" step="0.01"></label>
+  </div>
+  <div class="group">
+    <label class="row">Movimiento <input type="checkbox" data-k="motion"></label>
+    <label class="slider"><span>Sensibilidad</span><output></output><input type="range" data-k="sensitivity" min="0" max="1" step="0.01"></label>
+    <label class="slider"><span>Tamaño mínimo</span><output></output><input type="range" data-k="minSize" min="0" max="1" step="0.01"></label>
+  </div>
+
+  <h2>Aspecto</h2>
+  <label class="row">Espejo <input type="checkbox" data-k="mirror"></label>
+  <label class="row">Etiquetas <input type="checkbox" data-k="labels"></label>
+  <label class="slider"><span>Longitud de estela</span><output></output><input type="range" data-k="trail" min="0" max="15" step="1"></label>
+</aside>
 <script src="logic.js"></script>
 <script src="panel.js"></script>
 </html>

@@ -2,7 +2,8 @@
 // All rects are [x, y, w, h] normalized to the camera frame.
 
 const DEFAULTS = {
-  deviceId: '', windowed: false, mirror: true, labels: true, trail: 4,
+  deviceId: '', micId: '', mirror: true, labels: true, trail: 4,
+  bg: 'color', bgColor: '#101014', bgName: '', bgStamp: 0, // bg: color, file or desktop
   face: true, body: false, eyes: false, mouth: false,
   motion: true, sensitivity: 0.6, minSize: 0.25,
   threshold: false, level: 0.75,
@@ -11,6 +12,32 @@ const DEFAULTS = {
 function loadSettings() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('camfx')) }; }
   catch { return { ...DEFAULTS }; }
+}
+
+// Reads the chosen background file or, given one, stores it. Kept here so it survives a restart.
+function bgStore(mode, file) {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open('camfx', 1);
+    open.onupgradeneeded = () => open.result.createObjectStore('files');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const store = open.result.transaction('files', mode).objectStore('files');
+      const req = file ? store.put(file, 'bg') : store.get('bg');
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => resolve(req.result);
+    };
+  });
+}
+
+// UV scale that makes an iw*ih image cover a cw*ch frame, cropping whatever overflows.
+function coverScale(cw, ch, iw, ih) {
+  const r = (cw / ch) / (iw / ih);
+  return r < 1 ? [r, 1] : [1, 1 / r];
+}
+
+// '#rrggbb' to 0..1 channels.
+function hexToRgb(hex) {
+  return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
 }
 
 // Bottom to top; later kinds are drawn over earlier ones.
@@ -94,4 +121,4 @@ function stepTracks(tracks, now, ease) {
   }
 }
 
-if (typeof module === 'object') module.exports = { findBlobs, matchTracks, stepTracks, TTL, MAX_TRACKS };
+if (typeof module === 'object') module.exports = { findBlobs, matchTracks, stepTracks, coverScale, hexToRgb, TTL, MAX_TRACKS };
