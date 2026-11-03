@@ -108,6 +108,16 @@ const WU = {};
 for (const name of ['scale', 'live', 'screen', 'tips', 'cam', 'mirror', 'unit']) WU[name] = gl.getUniformLocation(webProg, name);
 gl.uniform1i(WU.live, 0);
 gl.uniform2f(WU.scale, 1, 1);
+const seqProg = compile(BG_VS, SEQ_FS);
+gl.useProgram(seqProg);
+const SU = {};
+for (const name of ['scale', 'live', 'mask', 'art', 'screen', 'frontPos', 'cam', 'mirror', 'unit', 'time', 'cut', 'dir', 'glitch', 'frontAng', 'frontScale', 'entering', 'style', 'bgLayer', 'frontLayer', 'personMode']) {
+  SU[name] = gl.getUniformLocation(seqProg, name);
+}
+gl.uniform1i(SU.live, 0);
+gl.uniform1i(SU.art, 4);
+gl.uniform1i(SU.mask, 5);
+gl.uniform2f(SU.scale, 1, 1);
 const prog = compile(VS, FS);
 gl.useProgram(prog);
 const U = {};
@@ -131,6 +141,9 @@ const live = texture(0, gl.TEXTURE_2D);
 const ring = texture(1, gl.TEXTURE_2D_ARRAY);
 gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, RING_W, RING_H, HIST);
 texture(3, gl.TEXTURE_2D); // background image or video
+texture(5, gl.TEXTURE_2D); // the person's silhouette; its mipmaps tell how deep inside the body a pixel is
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
 const readFb = gl.createFramebuffer(), drawFb = gl.createFramebuffer();
 gl.uniform1i(U.live, 0);
 gl.uniform1i(U.ring, 1);
@@ -211,7 +224,9 @@ addEventListener('resize', layout);
 video.addEventListener('resize', layout);
 layout();
 
-const tracks = [], web = {};
+const tracks = [], web = {}, swipe = {};
+const seq = { on: false, t0: -1e9, start: 0, dir: 1, face: null };
+const isSeq = () => S.effect === 'anime' || S.effect === 'collage';
 let count = 0;
 
 function put(x, y, w, h, frame, kind) {
@@ -251,9 +266,9 @@ function snapshot() {
 let hadPicture = false;
 
 function draw() {
-  const webs = S.effect === 'webs';
+  const webs = S.effect === 'webs', windows = S.effect === 'windows';
   count = 0;
-  if (!webs) for (const t of tracks) {
+  if (windows) for (const t of tracks) {
     for (let k = Math.min(S.trail, t.n, HIST - 1); k >= 1; k--) {
       const i = (t.n - k) % HIST * 4, h = t.hist;
       // A copy that has not moved would be hidden behind the window anyway.
@@ -262,7 +277,7 @@ function draw() {
     }
     put(t.x, t.y, t.w, t.h, -1, t.kind);
   }
-  const picture = webs ? !!web.pts : count > 0;
+  const picture = windows ? count > 0 : webs ? !!web.pts : seq.on || performance.now() - seq.t0 < CUT_MS;
   if (S.bg === 'desktop' && !picture && !hadPicture) return; // an empty layer stays as it is: nothing to composite
   hadPicture = picture;
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, inst, 0, count * STRIDE);
@@ -272,8 +287,68 @@ function draw() {
   gl.clear(gl.COLOR_BUFFER_BIT);
   if (S.bg === 'file' && bgReady) drawBackground();
   if (S.bg === 'camera' && video.videoWidth) drawCamera();
-  if (!webs) gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
-  else if (web.pts) drawWebs();
+  if (windows) gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+  else if (webs) { if (web.pts) drawWebs(); }
+  else drawSeq();
+}
+
+const CUT_MS = 800; // how long the cut between the camera and a scene takes
+
+function toggleSeq(dir) {
+  seq.on = !seq.on;
+  seq.t0 = performance.now();
+  seq.dir = dir;
+  if (seq.on) seq.start = seq.t0;
+}
+
+function drawSeq() {
+  const now = performance.now(), cut = Math.min((now - seq.t0) / CUT_MS, 1);
+  if (!seq.on && cut >= 1) return;
+  const f = seqFrame(S.effect, now - seq.start);
+  let { scale, ang } = f, x = canvas.width / 2, y = canvas.height / 2, front = f.front;
+  if (f.onFace) {
+    // The mask shrinks onto the face; without a face it stays off rather than floating in the wrong place.
+    if (seq.face) {
+      const [fx, fy, fw, fh] = seq.face;
+      x = (S.mirror ? 1 - fx - fw / 2 : fx + fw / 2) * cam.w + cam.x;
+      y = (fy + fh / 2) * cam.h + cam.y;
+      scale = fw * cam.w / canvas.width * 1.2;
+    } else front = -1;
+  }
+  gl.useProgram(seqProg);
+  gl.uniform2f(SU.screen, canvas.width, canvas.height);
+  gl.uniform4f(SU.cam, cam.x, cam.y, cam.w, cam.h);
+  gl.uniform2f(SU.frontPos, x, y);
+  gl.uniform1f(SU.mirror, S.mirror ? 1 : 0);
+  gl.uniform1f(SU.unit, unit);
+  gl.uniform1f(SU.time, now / 1000 % 1000);
+  gl.uniform1f(SU.cut, cut);
+  gl.uniform1f(SU.dir, seq.dir);
+  gl.uniform1f(SU.glitch, Math.max(f.glitch, cut < 1 && S.effect === 'anime' ? 1 - cut : 0));
+  gl.uniform1f(SU.frontAng, ang);
+  gl.uniform1f(SU.frontScale, scale);
+  gl.uniform1i(SU.entering, seq.on ? 1 : 0);
+  gl.uniform1i(SU.style, S.effect === 'collage' ? 1 : 0);
+  gl.uniform1i(SU.bgLayer, f.bg);
+  gl.uniform1i(SU.frontLayer, front);
+  gl.uniform1i(SU.personMode, f.person);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.useProgram(prog);
+}
+
+// The scene art is only painted the first time its effect is chosen.
+const arts = {};
+function useArt() {
+  if (!arts[S.effect]) {
+    arts[S.effect] = texture(4, gl.TEXTURE_2D_ARRAY);
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, ART_W, ART_H, ART_LAYERS[S.effect]);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    let n = 0;
+    paintArt(S.effect, c => gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, n++, ART_W, ART_H, 1, gl.RGBA, gl.UNSIGNED_BYTE, c));
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  }
+  gl.activeTexture(gl.TEXTURE4);
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, arts[S.effect]);
 }
 
 function drawBackground() {
@@ -318,6 +393,19 @@ worker.onmessage = ({ data }) => {
   if (data.error) lastError = data.error;
   if (data.ms !== undefined) detectMs += (data.ms - detectMs) * 0.1;
   if (data.hands) seeHands(web, data.hands, performance.now());
+  if (data.wrists && isSeq()) {
+    const dir = trackSwipe(swipe, data.wrists, performance.now(), S.gesture);
+    if (dir) toggleSeq(S.mirror ? -dir : dir);
+  }
+  if (data.mask) {
+    gl.activeTexture(gl.TEXTURE5);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, data.mask.w, data.mask.h, 0, gl.RED, gl.UNSIGNED_BYTE, data.mask.data);
+    gl.generateMipmap(gl.TEXTURE_2D);
+  }
+  if (isSeq()) {
+    if (data.face) seq.face = data.face[0] ?? null;
+    return; // the tracks below are the windows effect's
+  }
   for (const kind of KINDS) {
     if (!S[kind]) continue;
     if (data[kind]) matchTracks(tracks, kind, data[kind], performance.now());
@@ -327,9 +415,9 @@ worker.onmessage = ({ data }) => {
 function feedTracker() {
   if (busy) return;
   busy = true;
-  const w = S.effect === 'webs' ? 640 : 320; // fingers need more pixels than a face
+  const w = S.effect === 'windows' ? 320 : 640; // fingers need more pixels than a face
   createImageBitmap(video, { resizeWidth: w, resizeHeight: Math.round(w * video.videoHeight / video.videoWidth), resizeQuality: 'low' })
-    .then(bitmap => worker.postMessage({ bitmap, opts: S }, [bitmap]))
+    .then(bitmap => worker.postMessage({ bitmap, opts: { ...S, scene: seq.on } }, [bitmap]))
     .catch(() => { busy = false; });
 }
 
@@ -349,7 +437,7 @@ function onFrame() {
   renderMs += (t1 - t0 - renderMs) * 0.1;
   frames++;
   if (t1 - statT > 500) {
-    chan.postMessage({ stats: { windows: tracks.length, hands: !!web.pts, fps: Math.round(frames * 1000 / (t1 - statT)), detectMs, renderMs, error: lastError } });
+    chan.postMessage({ stats: { windows: tracks.length, hands: !!web.pts, scene: seq.on, fps: Math.round(frames * 1000 / (t1 - statT)), detectMs, renderMs, error: lastError } });
     frames = 0;
     statT = t1;
   }
@@ -493,10 +581,17 @@ async function useVideo(url) {
 chan.onmessage = ({ data }) => {
   if (data.useCamera) useCamera();
   if (data.useVideo) useVideo(data.useVideo);
+  if (data.seqToggle && isSeq()) toggleSeq(1);
   if (data.settings) {
     const changedDevice = data.settings.deviceId !== S.deviceId;
     const changedBg = data.settings.bg !== S.bg || data.settings.bgStamp !== S.bgStamp;
+    const changedEffect = data.settings.effect !== S.effect;
     Object.assign(S, data.settings);
+    if (changedEffect) {
+      seq.on = false;
+      seq.t0 = -1e9;
+      if (isSeq()) useArt();
+    }
     for (let i = tracks.length - 1; i >= 0; i--) if (!S[tracks[i].kind]) tracks.splice(i, 1);
     if (changedDevice && source === 'camera') useCamera();
     if (changedBg) loadBackground();
@@ -504,6 +599,7 @@ chan.onmessage = ({ data }) => {
   }
 };
 
+if (isSeq()) useArt();
 loadBackground();
 useCamera();
 chan.postMessage({ ready: true });

@@ -4,7 +4,7 @@
 // loaded bare, its minified top-level names land in the worker's global scope and it dies on load.
 self.exports = {};
 importScripts('logic.js', 'vendor/vision_bundle.js');
-const { FaceDetector, PoseLandmarker, HandLandmarker } = self.exports;
+const { FaceDetector, PoseLandmarker, HandLandmarker, ImageSegmenter } = self.exports;
 
 // The MediaPipe bundle reports usage stats to Google. In a camera app nothing leaves the PC.
 const realFetch = self.fetch;
@@ -65,9 +65,27 @@ function detectHands(bitmap, ts, out) {
   const det = detector('hands', HandLandmarker, 'vendor/hand_landmarker.task', 'GPU', { numHands: 2 });
   if (!det) return;
   // Left to right by the wrist, so each hand keeps its place from one frame to the next.
-  out.hands = det.detectForVideo(bitmap, ts).landmarks
-    .sort((a, b) => a[0].x - b[0].x)
-    .map(marks => WEB_TIPS.flatMap(i => [marks[i].x, marks[i].y]));
+  const hands = det.detectForVideo(bitmap, ts).landmarks.sort((a, b) => a[0].x - b[0].x);
+  out.hands = hands.map(marks => WEB_TIPS.flatMap(i => [marks[i].x, marks[i].y]));
+  out.wrists = hands.map(marks => marks[0].x);
+}
+
+const SEG = 256; // the model's own input size: anything bigger is only scaled down and the answer scaled back up
+const segCtx = new OffscreenCanvas(SEG, SEG).getContext('2d');
+
+function detectPerson(bitmap, ts, o, out) {
+  // GPU: the whole detection pass takes 24 ms against 38 ms on the CPU.
+  const det = detector('person', ImageSegmenter, 'vendor/selfie_segmenter.tflite', 'GPU', { outputConfidenceMasks: true, outputCategoryMask: false });
+  // Asked for even outside a scene, so that it is loaded before the first one needs it.
+  if (!det || !o.scene) return;
+  segCtx.drawImage(bitmap, 0, 0, SEG, SEG);
+  const small = segCtx.canvas.transferToImageBitmap();
+  const res = det.segmentForVideo(small, ts), m = res.confidenceMasks.at(-1), conf = m.getAsFloat32Array();
+  const data = new Uint8Array(conf.length);
+  for (let i = 0; i < conf.length; i++) data[i] = conf[i] * 255;
+  out.mask = { data, w: m.width, h: m.height };
+  res.close();
+  small.close();
 }
 
 const GRID_W = 96;
@@ -119,7 +137,11 @@ self.onmessage = ({ data: { bitmap, opts: o } }) => {
   ts = Math.max(ts + 1, t0); // MediaPipe needs strictly increasing timestamps
   try {
     if (o.effect === 'webs') detectHands(bitmap, ts, out);
-    else {
+    else if (o.effect === 'anime' || o.effect === 'collage') {
+      detectHands(bitmap, ts, out);
+      detectPerson(bitmap, ts, o, out);
+      if (o.effect === 'anime' && o.scene) detectFace(bitmap, ts, { face: true }, out);
+    } else {
       if (o.motion || o.threshold) scanPixels(bitmap, o, out);
       if (o.face || o.eyes || o.mouth) detectFace(bitmap, ts, o, out);
       if (o.body) detectBody(bitmap, ts, out);
@@ -129,5 +151,5 @@ self.onmessage = ({ data: { bitmap, opts: o } }) => {
   }
   bitmap.close();
   out.ms = performance.now() - t0;
-  postMessage(out);
+  postMessage(out, out.mask ? [out.mask.data.buffer] : []);
 };

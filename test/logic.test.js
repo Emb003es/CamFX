@@ -1,7 +1,67 @@
 // node --test test/logic.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { findBlobs, matchTracks, stepTracks, seeHands, stepHands, coverScale, hexToRgb, TTL, MAX_TRACKS } = require('../web/logic.js');
+const { findBlobs, matchTracks, stepTracks, seeHands, stepHands, trackSwipe, seqFrame, coverScale, hexToRgb, TTL, MAX_TRACKS, SCENE_MS, SWIPE_REST } = require('../web/logic.js');
+
+// One wrist moving by dx every 33 ms; returns the direction of each swipe it fired.
+function moveHand(sw, from, dx, frames, t0 = 0) {
+  const fired = [];
+  for (let i = 0; i < frames; i++) {
+    const d = trackSwipe(sw, [from + dx * i], t0 + i * 33);
+    if (d) fired.push(d);
+  }
+  return fired;
+}
+
+test('a fast hand fires one swipe with its direction, a slow one none', () => {
+  assert.deepStrictEqual(moveHand({}, 0.2, 0.05, 12), [1]);
+  assert.deepStrictEqual(moveHand({}, 0.8, -0.05, 12), [-1]);
+  assert.deepStrictEqual(moveHand({}, 0.1, 0.01, 40), [], 'slow gestures are not swipes');
+  assert.deepStrictEqual(moveHand({}, 0.5, 0.05, 2), [], 'too short a move is not a swipe');
+});
+
+test('a swipe survives the detector losing the hand for a moment, not for long', () => {
+  const sw = {};
+  trackSwipe(sw, [0.2], 0);
+  trackSwipe(sw, [0.26], 33);
+  trackSwipe(sw, [], 200);
+  assert.strictEqual(trackSwipe(sw, [0.45], 330), 1, 'came back further along after 300 ms');
+  const gap = {};
+  trackSwipe(gap, [0.2], 0);
+  trackSwipe(gap, [0.3], 33);
+  trackSwipe(gap, [], 500);
+  assert.strictEqual(trackSwipe(gap, [0.45], 533), 0, 'half a second away ends it');
+});
+
+test('sensitivity scales the swipe, and zero turns it off', () => {
+  const slow = (s) => { const sw = {}, fired = []; for (let i = 0; i < 12; i++) { const d = trackSwipe(sw, [0.1 + 0.015 * i], i * 33, s); if (d) fired.push(d); } return fired; };
+  assert.deepStrictEqual(slow(0.6), [], 'about 0.45 widths per second is under the default');
+  assert.deepStrictEqual(slow(1), [1]);
+  assert.deepStrictEqual(moveHand({ }, 0.1, 0.05, 12).length, 1);
+  const off = {};
+  for (let i = 0; i < 12; i++) assert.strictEqual(trackSwipe(off, [0.1 + 0.05 * i], i * 33, 0), 0);
+});
+
+test('swipes rest before firing again, and the other hand does not count as movement', () => {
+  const sw = {};
+  assert.deepStrictEqual(moveHand(sw, 0.1, 0.05, 8), [1]);
+  assert.deepStrictEqual(moveHand(sw, 0.5, -0.05, 8, 300), [], 'too soon after the last one');
+  assert.deepStrictEqual(moveHand(sw, 0.9, -0.05, 8, 300 + SWIPE_REST), [-1]);
+  const two = {};
+  trackSwipe(two, [0.1], 0);
+  assert.strictEqual(trackSwipe(two, [0.1, 0.9], 33), 0, 'a second hand appearing is not a jump');
+});
+
+test('the anime sequence loops, shakes at its cuts and is still in between', () => {
+  const a = seqFrame('anime', 0), b = seqFrame('anime', SCENE_MS);
+  assert.notStrictEqual(a.bg, b.bg);
+  assert.strictEqual(seqFrame('anime', SCENE_MS * 6).bg, a.bg);
+  assert.strictEqual(a.glitch, 1);
+  assert.ok(seqFrame('anime', SCENE_MS / 2).glitch <= 0);
+  const c = seqFrame('collage', 0);
+  assert.notStrictEqual(seqFrame('collage', 125).front, c.front, 'the pile churns');
+  assert.strictEqual(seqFrame('collage', 500).front, c.front);
+});
 
 test('sheets need both hands, ease towards them and go when the hands go', () => {
   const web = {};

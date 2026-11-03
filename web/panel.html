@@ -38,6 +38,8 @@
   .effect[aria-pressed=false]:hover { border-color: #4a4a52; }
   .effect + .effect { margin-top: 6px; }
   .side h2.spaced { margin-top: 20px; }
+  .plain { margin-top: 10px; padding: 6px 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; }
+  .plain:hover { border-color: var(--accent); }
 
   .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; margin-bottom: 8px; background: var(--ground); border-radius: 9px; }
   .seg button { padding: 5px 4px; border: 0; border-radius: 7px; background: none; color: var(--muted); }
@@ -140,6 +142,27 @@
     </svg>
     <span><b>Telas de tinta</b><small>Riso, cianotipia y puntos entre tus dedos</small></span>
   </button>
+  <button class="effect" data-effect="anime">
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <rect width="44" height="44" fill="#e9134f"/>
+      <path d="M6 16 17 9 22 24 31 14 40 7 36 18 41 26 28 35H10Z" fill="#0a0212"/>
+      <path d="M11 13 18 10 22 22 9 22Z M23 26 31 15 35 18 28 33Z" fill="#14ee6c"/>
+      <circle cx="16" cy="17" r="5" fill="#0a0212"/><circle cx="16" cy="17" r="3.200" fill="#0f5be0"/><circle cx="16" cy="17" r="1.500" fill="#fff"/>
+      <circle cx="29" cy="24" r="4.500" fill="#0a0212"/><circle cx="29" cy="24" r="2.800" fill="#0f5be0"/><circle cx="29" cy="24" r="1.300" fill="#fff"/>
+    </svg>
+    <span><b>Secuencia anime</b><small>Pasa la mano y saltas a una intro animada</small></span>
+  </button>
+  <button class="effect" data-effect="collage">
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <rect width="44" height="44" fill="#eee"/>
+      <circle cx="9" cy="14" r="9" fill="#fff21f"/><circle cx="34" cy="8" r="7" fill="#7d5cf0"/>
+      <path d="M27 24 33 18 36 26 42 16" fill="none" stroke="#2fe8ff" stroke-width="4"/>
+      <circle cx="22" cy="17" r="7" fill="#fff" stroke="#ec2980" stroke-width="1.200"/>
+      <rect x="18" y="14" width="4" height="2.500" fill="#17d6ff"/><rect x="22" y="18" width="4" height="2.500" fill="#ff2db4"/>
+      <path d="M3 44 12 30 20 36 26 28 34 36 41 44Z" fill="#ff3333"/><path d="M10 44 16 34 24 44Z" fill="#6cff3a"/><path d="M25 44 31 33 37 44Z" fill="#3a55ff"/>
+    </svg>
+    <span><b>Collage</b><small>Pasa la mano y tu silueta entra en un collage</small></span>
+  </button>
 
   <h2>Origen</h2>
   <div class="seg" role="group" aria-label="Origen">
@@ -201,6 +224,12 @@
   <div data-for="webs">
     <h2>Cómo se usa</h2>
     <p class="hint">Enseña las dos manos con los dedos abiertos: las telas se tensan entre un dedo y el mismo dedo de la otra mano.</p>
+  </div>
+  <div data-for="anime collage">
+    <h2>Cómo se usa</h2>
+    <p class="hint">Pasa la mano rápido de un lado a otro delante de la cámara: entras en la escena. Otro barrido te devuelve a la cámara.</p>
+    <label class="slider" style="margin-top: 10px"><span>Sensibilidad del gesto</span><output></output><input type="range" data-k="gesture" min="0" max="1" step="0.01"></label>
+    <button id="seqToggle" class="plain">Cambiar ahora</button>
   </div>
 
   <h2 class="spaced">Aspecto</h2>

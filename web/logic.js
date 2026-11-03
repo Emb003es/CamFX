@@ -2,7 +2,7 @@
 // All rects are [x, y, w, h] normalized to the camera frame.
 
 const DEFAULTS = {
-  effect: 'windows', // windows or webs
+  effect: 'windows', gesture: 0.6, // effect: windows, webs, anime or collage
   deviceId: '', micId: '', mirror: true, labels: true, trail: 4,
   bg: 'color', bgColor: '#101014', bgName: '', bgStamp: 0, // bg: color, camera, file or desktop
   face: true, body: false, eyes: false, mouth: false,
@@ -140,4 +140,54 @@ function stepHands(web, now, ease) {
   for (let i = 0; i < web.pts.length; i++) web.pts[i] += (web.target[i] - web.pts[i]) * ease;
 }
 
-if (typeof module === 'object') module.exports = { findBlobs, matchTracks, stepTracks, seeHands, stepHands, coverScale, hexToRgb, TTL, MAX_TRACKS };
+// At the default sensitivity. Measured on a real arm crossing the frame: about 0.5 widths/s, lost for 300 ms on the way.
+const SWIPE_SPEED = 0.5;  // frame widths per second
+const SWIPE_TRAVEL = 0.15; // frame widths
+const SWIPE_GAP = 400;    // ms a fast hand may go undetected, blurred, without ending the swipe
+const SWIPE_REST = 1000;  // ms before another swipe counts
+
+// A hand crossing the frame fast. xs: x of each hand's wrist. Returns +1 or -1 (towards larger x) once per swipe, else 0.
+// Sensitivity 0 turns it off.
+function trackSwipe(sw, xs, now, sensitivity = 0.6) {
+  if (!xs.length) {
+    if (now - sw.t > SWIPE_GAP) { sw.xs = null; sw.run = 0; }
+    return 0;
+  }
+  const k = 0.6 / sensitivity, dt = (now - sw.t) / 1000;
+  let step = 0;
+  if (sw.xs && dt > 0) for (const x of xs) {
+    const near = sw.xs.reduce((a, b) => Math.abs(b - x) < Math.abs(a - x) ? b : a, Infinity), dx = x - near;
+    // Further than a hand can go in dt is another hand showing up, not a move.
+    if (Math.abs(dx) < Math.min(0.05 + dt * 3, 0.35) && Math.abs(dx) / dt >= SWIPE_SPEED * k && Math.abs(dx) > Math.abs(step)) step = dx;
+  }
+  sw.run = step && Math.sign(step) === Math.sign(sw.run) ? sw.run + step : step;
+  sw.xs = xs;
+  sw.t = now;
+  if (Math.abs(sw.run) < SWIPE_TRAVEL * k || now < (sw.rest ?? 0)) return 0;
+  const dir = Math.sign(sw.run);
+  sw.run = 0;
+  sw.rest = now + SWIPE_REST;
+  return dir;
+}
+
+// The anime sequence, a cut every SCENE_MS. Layers are the ones painted in seq.js; move(t) animates the front layer.
+const SCENE_MS = 1700;
+const pop = t => 1 - (1 - Math.min(t * 2.5, 1)) ** 3;
+const ANIME = [
+  { bg: 0, person: 0, front: 1, move: t => ({ scale: 0.5 + 0.5 * pop(t) + 0.05 * t, ang: 0.35 * (1 - pop(t)) }) },
+  { bg: 2, person: 1, front: 3 },
+  { bg: 4, person: 0, front: -1, rough: 0.2 },
+  { bg: 5, person: 2, front: 9, onFace: true },
+  { bg: 6, person: 0, front: 7 },
+  { bg: 8, person: 0, front: 10, move: t => ({ scale: 0.95 + 0.2 * t, ang: -0.05 + 0.08 * t }) },
+];
+
+// What to draw ms after the scene started.
+function seqFrame(effect, ms) {
+  if (effect === 'collage') return { bg: 0, person: 3, front: 1 + Math.floor(ms / 125) % 4, scale: 1, ang: 0, glitch: 0 };
+  const scene = ANIME[Math.floor(ms / SCENE_MS) % ANIME.length], t = ms % SCENE_MS / SCENE_MS;
+  const shake = Math.max(1 - t / 0.1, (t - 0.94) / 0.06, scene.rough ?? 0);
+  return { scale: 1, ang: 0, ...scene, ...scene.move?.(t), glitch: shake };
+}
+
+if (typeof module === 'object') module.exports = { findBlobs, matchTracks, stepTracks, seeHands, stepHands, trackSwipe, seqFrame, coverScale, hexToRgb, TTL, MAX_TRACKS, SCENE_MS, SWIPE_REST };

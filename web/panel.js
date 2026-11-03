@@ -46,7 +46,7 @@ syncFaceBody();
 
 function showEffect() {
   for (const b of document.querySelectorAll('[data-effect]')) b.setAttribute('aria-pressed', b.dataset.effect === S.effect);
-  for (const el of document.querySelectorAll('[data-for]')) el.hidden = el.dataset.for !== S.effect;
+  for (const el of document.querySelectorAll('[data-for]')) el.hidden = !el.dataset.for.split(' ').includes(S.effect);
 }
 
 for (const b of document.querySelectorAll('[data-effect]')) {
@@ -54,12 +54,13 @@ for (const b of document.querySelectorAll('[data-effect]')) {
     S.effect = b.dataset.effect;
     save();
     showEffect();
-    // The sheets are lenses on the camera, so they open over it; the windows would be lost over their own picture.
-    if (S.effect === 'webs') document.querySelector('[data-bg=camera]').click();
+    // The other effects build on the camera, so they open over it; the windows would be lost over their own picture.
+    if (S.effect !== 'windows') document.querySelector('[data-bg=camera]').click();
     else if (S.bg === 'camera') document.querySelector('[data-bg=color]').click();
   };
 }
 showEffect();
+$('seqToggle').onclick = () => chan.postMessage({ seqToggle: true });
 
 // Source
 
@@ -228,9 +229,9 @@ chan.onmessage = ({ data }) => {
   }
   if (data.stats) {
     const s = data.stats;
-    const seen = S.effect === 'webs'
-      ? (s.hands ? 'dos manos' : 'faltan manos')
-      : `${s.windows} ${s.windows === 1 ? 'ventana' : 'ventanas'}`;
+    const seen = S.effect === 'windows' ? `${s.windows} ${s.windows === 1 ? 'ventana' : 'ventanas'}`
+      : S.effect === 'webs' ? (s.hands ? 'dos manos' : 'faltan manos')
+      : (s.scene ? 'en escena' : 'cámara');
     $('stat').textContent = `${s.fps} fps · ${seen}`;
     if (s.error) $('error').textContent = s.error;
   }
