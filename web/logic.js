@@ -2,8 +2,9 @@
 // All rects are [x, y, w, h] normalized to the camera frame.
 
 const DEFAULTS = {
+  effect: 'windows', // windows or webs
   deviceId: '', micId: '', mirror: true, labels: true, trail: 4,
-  bg: 'color', bgColor: '#101014', bgName: '', bgStamp: 0, // bg: color, file or desktop
+  bg: 'color', bgColor: '#101014', bgName: '', bgStamp: 0, // bg: color, camera, file or desktop
   face: true, body: false, eyes: false, mouth: false,
   motion: true, sensitivity: 0.6, minSize: 0.25,
   threshold: false, level: 0.75,
@@ -121,4 +122,22 @@ function stepTracks(tracks, now, ease) {
   }
 }
 
-if (typeof module === 'object') module.exports = { findBlobs, matchTracks, stepTracks, coverScale, hexToRgb, TTL, MAX_TRACKS };
+// The sheets stretch between the same fingertips of two hands (MediaPipe ids): thumb, index, middle, pinky.
+const WEB_TIPS = [4, 8, 12, 20];
+
+// dets: one flat [x, y, ...] per hand. A sheet needs both ends, so a lone hand changes nothing.
+function seeHands(web, dets, now) {
+  if (dets.length < 2) return;
+  web.target = [...dets[0], ...dets[1]];
+  web.seen = now;
+  web.pts ??= web.target.slice();
+}
+
+// Eases the fingertips towards their last detection and drops them once the hands are gone.
+function stepHands(web, now, ease) {
+  if (!web.pts) return;
+  if (now - web.seen > TTL) { web.pts = null; return; }
+  for (let i = 0; i < web.pts.length; i++) web.pts[i] += (web.target[i] - web.pts[i]) * ease;
+}
+
+if (typeof module === 'object') module.exports = { findBlobs, matchTracks, stepTracks, seeHands, stepHands, coverScale, hexToRgb, TTL, MAX_TRACKS };

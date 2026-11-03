@@ -1,7 +1,23 @@
 // node --test test/logic.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { findBlobs, matchTracks, stepTracks, coverScale, hexToRgb, TTL, MAX_TRACKS } = require('../web/logic.js');
+const { findBlobs, matchTracks, stepTracks, seeHands, stepHands, coverScale, hexToRgb, TTL, MAX_TRACKS } = require('../web/logic.js');
+
+test('sheets need both hands, ease towards them and go when the hands go', () => {
+  const web = {};
+  seeHands(web, [[0, 0]], 0);
+  assert.strictEqual(web.pts, undefined, 'one hand is not enough');
+  seeHands(web, [[0, 0], [1, 1]], 0);
+  assert.deepStrictEqual(web.pts, [0, 0, 1, 1], 'starts on the hands, not flying in');
+  seeHands(web, [[0.5, 0]], 1);
+  assert.deepStrictEqual(web.target, [0, 0, 1, 1], 'losing one hand keeps the last pair');
+  seeHands(web, [[0.5, 0], [1, 1]], 1);
+  stepHands(web, 1, 0.5);
+  assert.deepStrictEqual(web.pts, [0.25, 0, 1, 1]);
+  stepHands(web, TTL + 2, 0.5);
+  assert.strictEqual(web.pts, null);
+  stepHands(web, TTL + 3, 0.5); // and nothing to do afterwards
+});
 
 test('a background covers the frame and only crops the axis that overflows', () => {
   assert.deepStrictEqual(coverScale(1920, 1080, 1920, 1080), [1, 1]);

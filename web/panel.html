@@ -34,6 +34,10 @@
   .effect svg { flex: none; display: block; border-radius: 6px; }
   .effect b { display: block; font-weight: 600; }
   .effect small { display: block; font-size: 11.5px; color: var(--muted); }
+  .effect[aria-pressed=false] { background: none; border-color: var(--line); }
+  .effect[aria-pressed=false]:hover { border-color: #4a4a52; }
+  .effect + .effect { margin-top: 6px; }
+  .side h2.spaced { margin-top: 20px; }
 
   .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; margin-bottom: 8px; background: var(--ground); border-radius: 9px; }
   .seg button { padding: 5px 4px; border: 0; border-radius: 7px; background: none; color: var(--muted); }
@@ -115,7 +119,7 @@
   </div>
 
   <h2>Efectos</h2>
-  <button class="effect" aria-pressed="true">
+  <button class="effect" data-effect="windows">
     <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
       <rect width="44" height="44" fill="#0d0d0f"/>
       <g fill="#3a3a40"><rect x="5" y="7" width="20" height="16" rx="2.5"/></g>
@@ -124,6 +128,17 @@
       <g fill="#d6e89a"><circle cx="17.5" cy="19.5" r="1"/><circle cx="20.8" cy="19.5" r="1"/><circle cx="24.1" cy="19.5" r="1"/></g>
     </svg>
     <span><b>Ventanas flotantes</b><small>Siguen tu cara y tu movimiento</small></span>
+  </button>
+  <button class="effect" data-effect="webs">
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <rect width="44" height="44" fill="#0d0d0f"/>
+      <path d="M4 9 40 7 34 18 9 20Z" fill="#185087"/>
+      <path d="M9 20 34 18 32 28 12 30Z" fill="#fcf3e8"/>
+      <path d="M13 29.900 21 24 25 29.100Z" fill="#076c0f"/>
+      <path d="M12 30 32 28 39 37 6 38Z" fill="#fff"/>
+      <g fill="#e0473b"><circle cx="15" cy="34" r="1.500"/><circle cx="19" cy="34" r="1.100"/><circle cx="29" cy="33" r="1.500"/><circle cx="33" cy="33.500" r="1.500"/><circle cx="31" cy="30.500" r="1"/></g>
+    </svg>
+    <span><b>Telas de tinta</b><small>Riso, cianotipia y puntos entre tus dedos</small></span>
   </button>
 
   <h2>Origen</h2>
@@ -138,6 +153,7 @@
   <h2>Fondo</h2>
   <div class="seg" role="group" aria-label="Fondo">
     <button data-bg="color">Color</button>
+    <button data-bg="camera">Cámara</button>
     <button data-bg="file">Archivo</button>
     <button data-bg="desktop">Escritorio</button>
   </div>
@@ -146,7 +162,7 @@
     <label class="file">Elegir imagen o vídeo…<input id="bgFile" type="file" accept="image/*,video/*"></label>
     <small id="bgName"></small>
   </div>
-  <p id="paneDesktop" class="hint">Las ventanas flotan sobre tu escritorio. Minimiza CamFX si te estorba.</p>
+  <p id="paneDesktop" class="hint">El efecto flota sobre tu escritorio. Minimiza CamFX si te estorba.</p>
   <div id="bgError" class="err" role="alert"></div>
 </aside>
 
@@ -163,28 +179,36 @@
 </main>
 
 <aside class="side">
-  <h2>Seguimiento</h2>
-  <label class="row">Cara y cuerpo <input type="checkbox" id="faceBody"></label>
-  <div class="sub">
-    <label class="row">Cara <input type="checkbox" data-k="face"></label>
-    <label class="row">Cuerpo <input type="checkbox" data-k="body"></label>
-    <label class="row">Ojos <input type="checkbox" data-k="eyes"></label>
-    <label class="row">Boca <input type="checkbox" data-k="mouth"></label>
+  <div data-for="windows">
+    <h2>Seguimiento</h2>
+    <label class="row">Cara y cuerpo <input type="checkbox" id="faceBody"></label>
+    <div class="sub">
+      <label class="row">Cara <input type="checkbox" data-k="face"></label>
+      <label class="row">Cuerpo <input type="checkbox" data-k="body"></label>
+      <label class="row">Ojos <input type="checkbox" data-k="eyes"></label>
+      <label class="row">Boca <input type="checkbox" data-k="mouth"></label>
+    </div>
+    <div class="group">
+      <label class="row">Umbral <input type="checkbox" data-k="threshold"></label>
+      <label class="slider"><span>Brillo mínimo</span><output></output><input type="range" data-k="level" min="0.2" max="0.98" step="0.01"></label>
+    </div>
+    <div class="group">
+      <label class="row">Movimiento <input type="checkbox" data-k="motion"></label>
+      <label class="slider"><span>Sensibilidad</span><output></output><input type="range" data-k="sensitivity" min="0" max="1" step="0.01"></label>
+      <label class="slider"><span>Tamaño mínimo</span><output></output><input type="range" data-k="minSize" min="0" max="1" step="0.01"></label>
+    </div>
   </div>
-  <div class="group">
-    <label class="row">Umbral <input type="checkbox" data-k="threshold"></label>
-    <label class="slider"><span>Brillo mínimo</span><output></output><input type="range" data-k="level" min="0.2" max="0.98" step="0.01"></label>
-  </div>
-  <div class="group">
-    <label class="row">Movimiento <input type="checkbox" data-k="motion"></label>
-    <label class="slider"><span>Sensibilidad</span><output></output><input type="range" data-k="sensitivity" min="0" max="1" step="0.01"></label>
-    <label class="slider"><span>Tamaño mínimo</span><output></output><input type="range" data-k="minSize" min="0" max="1" step="0.01"></label>
+  <div data-for="webs">
+    <h2>Cómo se usa</h2>
+    <p class="hint">Enseña las dos manos con los dedos abiertos: las telas se tensan entre un dedo y el mismo dedo de la otra mano.</p>
   </div>
 
-  <h2>Aspecto</h2>
+  <h2 class="spaced">Aspecto</h2>
   <label class="row">Espejo <input type="checkbox" data-k="mirror"></label>
-  <label class="row">Etiquetas <input type="checkbox" data-k="labels"></label>
-  <label class="slider"><span>Longitud de estela</span><output></output><input type="range" data-k="trail" min="0" max="15" step="1"></label>
+  <div data-for="windows">
+    <label class="row">Etiquetas <input type="checkbox" data-k="labels"></label>
+    <label class="slider"><span>Longitud de estela</span><output></output><input type="range" data-k="trail" min="0" max="15" step="1"></label>
+  </div>
 </aside>
 <script src="logic.js"></script>
 <script src="panel.js"></script>

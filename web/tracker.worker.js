@@ -4,7 +4,7 @@
 // loaded bare, its minified top-level names land in the worker's global scope and it dies on load.
 self.exports = {};
 importScripts('logic.js', 'vendor/vision_bundle.js');
-const { FaceDetector, PoseLandmarker } = self.exports;
+const { FaceDetector, PoseLandmarker, HandLandmarker } = self.exports;
 
 // The MediaPipe bundle reports usage stats to Google. In a camera app nothing leaves the PC.
 const realFetch = self.fetch;
@@ -21,10 +21,10 @@ const fileset = {
 const detectors = {};
 
 // Returns the detector, or undefined while it is still loading.
-function detector(name, cls, model, delegate) {
+function detector(name, cls, model, delegate, options) {
   if (!detectors[name]) {
     detectors[name] = 'loading';
-    const load = d => cls.createFromOptions(fileset, { baseOptions: { modelAssetPath: abs(model), delegate: d }, runningMode: 'VIDEO' });
+    const load = d => cls.createFromOptions(fileset, { baseOptions: { modelAssetPath: abs(model), delegate: d }, runningMode: 'VIDEO', ...options });
     load(delegate).catch(() => load('CPU'))
       .then(d => { detectors[name] = d; })
       .catch(e => { postMessage({ error: `${name}: ${e.message}` }); });
@@ -59,6 +59,15 @@ function detectBody(bitmap, ts, out) {
     const x = Math.min(...xs), y = Math.min(...ys);
     out.body.push([x, y, Math.max(...xs) - x, Math.max(...ys) - y]);
   }
+}
+
+function detectHands(bitmap, ts, out) {
+  const det = detector('hands', HandLandmarker, 'vendor/hand_landmarker.task', 'GPU', { numHands: 2 });
+  if (!det) return;
+  // Left to right by the wrist, so each hand keeps its place from one frame to the next.
+  out.hands = det.detectForVideo(bitmap, ts).landmarks
+    .sort((a, b) => a[0].x - b[0].x)
+    .map(marks => WEB_TIPS.flatMap(i => [marks[i].x, marks[i].y]));
 }
 
 const GRID_W = 96;
@@ -109,9 +118,12 @@ self.onmessage = ({ data: { bitmap, opts: o } }) => {
   const t0 = performance.now(), out = {};
   ts = Math.max(ts + 1, t0); // MediaPipe needs strictly increasing timestamps
   try {
-    if (o.motion || o.threshold) scanPixels(bitmap, o, out);
-    if (o.face || o.eyes || o.mouth) detectFace(bitmap, ts, o, out);
-    if (o.body) detectBody(bitmap, ts, out);
+    if (o.effect === 'webs') detectHands(bitmap, ts, out);
+    else {
+      if (o.motion || o.threshold) scanPixels(bitmap, o, out);
+      if (o.face || o.eyes || o.mouth) detectFace(bitmap, ts, o, out);
+      if (o.body) detectBody(bitmap, ts, out);
+    }
   } catch (e) {
     out.error = e.message;
   }

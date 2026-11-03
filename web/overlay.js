@@ -100,7 +100,14 @@ function compile(vs, fs) {
 
 const bgProg = compile(BG_VS, BG_FS);
 gl.useProgram(bgProg);
-gl.uniform1i(gl.getUniformLocation(bgProg, 'bg'), 3);
+const bgSampler = gl.getUniformLocation(bgProg, 'bg'), bgScale = gl.getUniformLocation(bgProg, 'scale');
+gl.uniform1i(bgSampler, 3);
+const webProg = compile(BG_VS, WEB_FS);
+gl.useProgram(webProg);
+const WU = {};
+for (const name of ['scale', 'live', 'screen', 'tips', 'cam', 'mirror', 'unit']) WU[name] = gl.getUniformLocation(webProg, name);
+gl.uniform1i(WU.live, 0);
+gl.uniform2f(WU.scale, 1, 1);
 const prog = compile(VS, FS);
 gl.useProgram(prog);
 const U = {};
@@ -204,7 +211,7 @@ addEventListener('resize', layout);
 video.addEventListener('resize', layout);
 layout();
 
-const tracks = [];
+const tracks = [], web = {};
 let count = 0;
 
 function put(x, y, w, h, frame, kind) {
@@ -241,10 +248,12 @@ function snapshot() {
   }
 }
 
+let hadPicture = false;
+
 function draw() {
-  const hadWindows = count > 0;
+  const webs = S.effect === 'webs';
   count = 0;
-  for (const t of tracks) {
+  if (!webs) for (const t of tracks) {
     for (let k = Math.min(S.trail, t.n, HIST - 1); k >= 1; k--) {
       const i = (t.n - k) % HIST * 4, h = t.hist;
       // A copy that has not moved would be hidden behind the window anyway.
@@ -253,14 +262,18 @@ function draw() {
     }
     put(t.x, t.y, t.w, t.h, -1, t.kind);
   }
-  if (S.bg === 'desktop' && !count && !hadWindows) return; // an empty layer stays as it is: nothing to composite
+  const picture = webs ? !!web.pts : count > 0;
+  if (S.bg === 'desktop' && !picture && !hadPicture) return; // an empty layer stays as it is: nothing to composite
+  hadPicture = picture;
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, inst, 0, count * STRIDE);
   gl.uniform1f(U.mirror, S.mirror ? 1 : 0);
   if (S.bg === 'desktop') gl.clearColor(0, 0, 0, 0);
   else gl.clearColor(...hexToRgb(S.bgColor), 1);
   gl.clear(gl.COLOR_BUFFER_BIT);
   if (S.bg === 'file' && bgReady) drawBackground();
-  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+  if (S.bg === 'camera' && video.videoWidth) drawCamera();
+  if (!webs) gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+  else if (web.pts) drawWebs();
 }
 
 function drawBackground() {
@@ -273,6 +286,29 @@ function drawBackground() {
   gl.useProgram(prog);
 }
 
+// The live frame as background. Changing to a file background sets its own scale again in fitBackground.
+function drawCamera() {
+  const [sx, sy] = coverScale(canvas.width, canvas.height, video.videoWidth, video.videoHeight);
+  gl.useProgram(bgProg);
+  gl.uniform1i(bgSampler, 0);
+  gl.uniform2f(bgScale, S.mirror ? -sx : sx, sy);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.uniform1i(bgSampler, 3);
+  gl.useProgram(prog);
+}
+
+function drawWebs() {
+  const tips = web.pts.map((v, i) => i % 2 ? v * cam.h + cam.y : (S.mirror ? 1 - v : v) * cam.w + cam.x);
+  gl.useProgram(webProg);
+  gl.uniform2f(WU.screen, canvas.width, canvas.height);
+  gl.uniform2fv(WU.tips, tips);
+  gl.uniform4f(WU.cam, cam.x, cam.y, cam.w, cam.h);
+  gl.uniform1f(WU.mirror, S.mirror ? 1 : 0);
+  gl.uniform1f(WU.unit, unit);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.useProgram(prog);
+}
+
 const worker = new Worker('tracker.worker.js');
 let busy = false, detectMs = 0, lastError = '';
 
@@ -281,6 +317,7 @@ worker.onmessage = ({ data }) => {
   busy = false;
   if (data.error) lastError = data.error;
   if (data.ms !== undefined) detectMs += (data.ms - detectMs) * 0.1;
+  if (data.hands) seeHands(web, data.hands, performance.now());
   for (const kind of KINDS) {
     if (!S[kind]) continue;
     if (data[kind]) matchTracks(tracks, kind, data[kind], performance.now());
@@ -290,7 +327,8 @@ worker.onmessage = ({ data }) => {
 function feedTracker() {
   if (busy) return;
   busy = true;
-  createImageBitmap(video, { resizeWidth: 320, resizeHeight: Math.round(320 * video.videoHeight / video.videoWidth), resizeQuality: 'low' })
+  const w = S.effect === 'webs' ? 640 : 320; // fingers need more pixels than a face
+  createImageBitmap(video, { resizeWidth: w, resizeHeight: Math.round(w * video.videoHeight / video.videoWidth), resizeQuality: 'low' })
     .then(bitmap => worker.postMessage({ bitmap, opts: S }, [bitmap]))
     .catch(() => { busy = false; });
 }
@@ -302,15 +340,16 @@ function onFrame() {
   const t0 = performance.now();
   gl.activeTexture(gl.TEXTURE0);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
-  if (++frameNo % 2 === 0 && S.trail > 0) snapshot();
+  if (++frameNo % 2 === 0 && S.trail > 0 && S.effect === 'windows') snapshot();
   stepTracks(tracks, t0, 0.45);
+  stepHands(web, t0, 0.6);
   feedTracker();
   draw();
   const t1 = performance.now();
   renderMs += (t1 - t0 - renderMs) * 0.1;
   frames++;
   if (t1 - statT > 500) {
-    chan.postMessage({ stats: { windows: tracks.length, fps: Math.round(frames * 1000 / (t1 - statT)), detectMs, renderMs, error: lastError } });
+    chan.postMessage({ stats: { windows: tracks.length, hands: !!web.pts, fps: Math.round(frames * 1000 / (t1 - statT)), detectMs, renderMs, error: lastError } });
     frames = 0;
     statT = t1;
   }
@@ -329,7 +368,7 @@ const sendStatus = () => chan.postMessage({ status: { source, sourceError, devic
 
 function fitBackground(w, h) {
   gl.useProgram(bgProg);
-  gl.uniform2f(gl.getUniformLocation(bgProg, 'scale'), ...coverScale(canvas.width, canvas.height, w, h));
+  gl.uniform2f(bgScale, ...coverScale(canvas.width, canvas.height, w, h));
   gl.useProgram(prog);
   bgReady = true;
 }
@@ -378,6 +417,7 @@ function stopSource() {
   video.removeAttribute('src');
   video.load();
   tracks.length = 0;
+  web.pts = null;
   draw(); // without new frames the last windows would stay frozen on screen
 }
 

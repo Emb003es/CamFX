@@ -42,6 +42,25 @@ $('faceBody').onchange = e => {
 };
 syncFaceBody();
 
+// Effect
+
+function showEffect() {
+  for (const b of document.querySelectorAll('[data-effect]')) b.setAttribute('aria-pressed', b.dataset.effect === S.effect);
+  for (const el of document.querySelectorAll('[data-for]')) el.hidden = el.dataset.for !== S.effect;
+}
+
+for (const b of document.querySelectorAll('[data-effect]')) {
+  b.onclick = () => {
+    S.effect = b.dataset.effect;
+    save();
+    showEffect();
+    // The sheets are lenses on the camera, so they open over it; the windows would be lost over their own picture.
+    if (S.effect === 'webs') document.querySelector('[data-bg=camera]').click();
+    else if (S.bg === 'camera') document.querySelector('[data-bg=color]').click();
+  };
+}
+showEffect();
+
 // Source
 
 let videoUrl = '';
@@ -209,7 +228,10 @@ chan.onmessage = ({ data }) => {
   }
   if (data.stats) {
     const s = data.stats;
-    $('stat').textContent = `${s.fps} fps · ${s.windows} ${s.windows === 1 ? 'ventana' : 'ventanas'}`;
+    const seen = S.effect === 'webs'
+      ? (s.hands ? 'dos manos' : 'faltan manos')
+      : `${s.windows} ${s.windows === 1 ? 'ventana' : 'ventanas'}`;
+    $('stat').textContent = `${s.fps} fps · ${seen}`;
     if (s.error) $('error').textContent = s.error;
   }
 };
