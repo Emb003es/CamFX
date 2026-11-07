@@ -38,7 +38,7 @@ La carpeta `web/` funciona sola en el navegador, sin instalar nada: súbela a cu
 - Va en Chrome y Edge de escritorio. Las grabaciones se descargan en lugar de guardarse en `Vídeos\CamFX`.
 - No hay fondo de escritorio: eso necesita la app de Windows.
 - Para meterla dentro de otra página, usa `<iframe src="…/web/panel.html" allow="camera; microphone"></iframe>`.
-- Para probarla en tu PC: `python -m http.server` dentro de `web/` y abre `http://localhost:8000`.
+- Para probarla en tu PC sin instalar nada: doble clic en `Abrir CamFX.bat`. Abre CamFX en el navegador y sigue funcionando mientras la ventana negra esté abierta.
 
 ## Privacidad
 
