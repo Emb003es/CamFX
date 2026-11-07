@@ -38,9 +38,10 @@ function detectFace(bitmap, ts, o, out) {
   // CPU: on this tiny model it is as fast as the GPU delegate and leaves the GPU to the render.
   const det = detector('face', FaceDetector, 'vendor/blaze_face_short_range.tflite', 'CPU');
   if (!det) return;
-  out.face = []; out.eyes = []; out.mouth = [];
+  out.face = []; out.eyes = []; out.mouth = []; out.kp = [];
   for (const { boundingBox: b, keypoints: k } of det.detectForVideo(bitmap, ts).detections) {
     const w = b.width / bitmap.width, h = b.height / bitmap.height;
+    out.kp.push(k.flatMap(p => [p.x, p.y])); // eyes, nose, mouth and ears, for whoever needs more than boxes
     // BlazeFace boxes are tight; the window in the reel takes in the whole head.
     if (o.face) out.face.push(around({ x: b.originX / bitmap.width + w / 2, y: b.originY / bitmap.height + h * 0.42 }, w * 1.55, h * 1.9));
     if (o.eyes) out.eyes.push(around(k[0], w * 0.34, h * 0.2), around(k[1], w * 0.34, h * 0.2));
@@ -68,6 +69,7 @@ function detectHands(bitmap, ts, out) {
   const hands = det.detectForVideo(bitmap, ts).landmarks.sort((a, b) => a[0].x - b[0].x);
   out.hands = hands.map(marks => WEB_TIPS.flatMap(i => [marks[i].x, marks[i].y]));
   out.wrists = hands.map(marks => marks[0].x);
+  out.marks = hands.map(marks => marks.flatMap(m => [m.x, m.y]));
 }
 
 const SEG = 256; // the model's own input size: anything bigger is only scaled down and the answer scaled back up
@@ -141,6 +143,9 @@ self.onmessage = ({ data: { bitmap, opts: o } }) => {
       detectHands(bitmap, ts, out);
       detectPerson(bitmap, ts, o, out);
       if (o.effect === 'anime' && o.scene) detectFace(bitmap, ts, { face: true }, out);
+    } else if (FINGER_EFFECTS.includes(o.effect)) {
+      detectHands(bitmap, ts, out);
+      if (o.effect === 'life') detectFace(bitmap, ts, { face: true }, out);
     } else {
       if (o.motion || o.threshold) scanPixels(bitmap, o, out);
       if (o.face || o.eyes || o.mouth) detectFace(bitmap, ts, o, out);

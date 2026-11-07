@@ -2,7 +2,11 @@
 // All rects are [x, y, w, h] normalized to the camera frame.
 
 const DEFAULTS = {
-  effect: 'windows', gesture: 0.6, // effect: windows, webs, anime or collage
+  effect: 'windows', gesture: 0.6, // effect: windows, webs, anime, collage, or one of FINGER_EFFECTS
+  title: 'EMBO', subtitle: 'SEQUENCE', // the anime sequence's lettering
+  instrument: 'piano', scale: 'mayor', // music: piano, synth, bells or drums; a key of SCALES
+  name: 'EMBO',                        // life: the character's name
+  ink: 6, kaleido: false,              // paint: seconds a stroke lasts (INK_FOREVER: for good), six-fold mirror
   deviceId: '', micId: '', mirror: true, labels: true, trail: 4,
   bg: 'color', bgColor: '#101014', bgName: '', bgStamp: 0, // bg: color, camera, file or desktop
   face: true, body: false, eyes: false, mouth: false,
@@ -190,4 +194,72 @@ function seqFrame(effect, ms) {
   return { scale: 1, ang: 0, ...scene, ...scene.move?.(t), glitch: shake };
 }
 
-if (typeof module === 'object') module.exports = { findBlobs, matchTracks, stepTracks, seeHands, stepHands, trackSwipe, seqFrame, coverScale, hexToRgb, TTL, MAX_TRACKS, SCENE_MS, SWIPE_REST };
+// The effects played with the fingers, drawn by fingers.js. They all need every landmark of the hands.
+const FINGER_EFFECTS = ['music', 'life', 'paint', 'energy'];
+const INK_FOREVER = 30;
+
+// Every landmark of each hand (dets: one flat [x, y, ...] of 21 points per hand), eased like the fingertips.
+// A hand keeps its id while it moves: it is matched by the wrist to the nearest hand of the last detection.
+function seeMarks(hs, dets, now) {
+  hs.list ??= [];
+  hs.ids ??= 0;
+  const free = hs.list.slice();
+  for (const target of dets) {
+    let best = -1, bestDist = 0.25;
+    free.forEach((h, i) => {
+      const d = Math.hypot(h.target[0] - target[0], h.target[1] - target[1]);
+      if (d < bestDist) { bestDist = d; best = i; }
+    });
+    if (best >= 0) Object.assign(free.splice(best, 1)[0], { target, seen: now });
+    else hs.list.push({ id: ++hs.ids, target, pts: target.slice(), seen: now });
+  }
+}
+
+function stepMarks(hs, now, ease) {
+  if (!hs.list) return;
+  hs.list = hs.list.filter(h => now - h.seen <= TTL);
+  for (const h of hs.list) for (let i = 0; i < h.pts.length; i++) h.pts[i] += (h.target[i] - h.pts[i]) * ease;
+}
+
+// Fingertips (MediaPipe ids) of the index, middle, ring and pinky, and the joint below each.
+const TIPS = [8, 12, 16, 20], PIPS = [6, 10, 14, 18], KNUCKLES = [5, 9, 13, 17];
+
+// What a hand is doing, from its 21 landmarks in px ([x, y] each). was: the last answer for this hand, so
+// that a pinch or a touch needs to open further to end than to start, and does not flicker at the edge.
+function readHand(p, was = {}) {
+  const d = (a, b) => Math.hypot(p[a][0] - p[b][0], p[a][1] - p[b][1]);
+  const size = Math.max(d(0, 9), 1); // wrist to the middle finger's knuckle: the scale of everything else
+  const up = TIPS.map((t, i) => d(0, t) > d(0, PIPS[i]) * 1.12);
+  const curled = TIPS.map((t, i) => d(0, t) < d(0, KNUCKLES[i]) * 1.05);
+  const count = up.filter(Boolean).length;
+  // In a pinch the index still reaches past its knuckle; in a fist the thumb lies on curled fingers.
+  const pinch = d(4, 8) / size < (was.pinch ? 0.45 : 0.3) && !curled[0];
+  const ratios = TIPS.map(t => d(4, t) / size);
+  let touch = was.touch >= 0 && ratios[was.touch] < 0.42 ? was.touch : -1;
+  if (touch < 0) {
+    const m = Math.min(...ratios);
+    if (m < 0.26) touch = ratios.indexOf(m);
+  }
+  const palm = [0, 5, 9, 13, 17].reduce((a, i) => [a[0] + p[i][0] / 5, a[1] + p[i][1] / 5], [0, 0]);
+  return {
+    size, up, count, pinch, touch, palm,
+    open: count === 4 && !pinch,
+    fist: curled.every(Boolean),
+    at: [(p[4][0] + p[8][0]) / 2, (p[4][1] + p[8][1]) / 2], // where a pinch holds things
+  };
+}
+
+// Semitones above the root of each five- or six-note scale.
+const SCALES = { mayor: [0, 2, 4, 7, 9], menor: [0, 3, 5, 7, 10], blues: [0, 3, 5, 6, 7, 10], japonesa: [0, 1, 5, 7, 8] };
+const NOTE_NAMES = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
+
+// MIDI number of the n-th step (any integer) of a scale starting at root.
+function scaleNote(scale, n, root = 60) {
+  const s = SCALES[scale] ?? SCALES.mayor, len = s.length;
+  return root + 12 * Math.floor(n / len) + s[((n % len) + len) % len];
+}
+
+const midiFreq = m => 440 * 2 ** ((m - 69) / 12);
+const noteName = m => NOTE_NAMES[((m % 12) + 12) % 12];
+
+if (typeof module === 'object') module.exports = { findBlobs, matchTracks, stepTracks, seeHands, stepHands, trackSwipe, seqFrame, coverScale, hexToRgb, seeMarks, stepMarks, readHand, scaleNote, midiFreq, noteName, TTL, MAX_TRACKS, SCENE_MS, SWIPE_REST };

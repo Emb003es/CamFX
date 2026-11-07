@@ -118,6 +118,15 @@ gl.uniform1i(SU.live, 0);
 gl.uniform1i(SU.art, 4);
 gl.uniform1i(SU.mask, 5);
 gl.uniform2f(SU.scale, 1, 1);
+const hudProg = compile(BG_VS, `#version 300 es
+precision highp float;
+in vec2 uv;
+uniform sampler2D hud;
+out vec4 o;
+void main() { o = texture(hud, uv); }`);
+gl.useProgram(hudProg);
+gl.uniform1i(gl.getUniformLocation(hudProg, 'hud'), 6);
+gl.uniform2f(gl.getUniformLocation(hudProg, 'scale'), 1, 1);
 const prog = compile(VS, FS);
 gl.useProgram(prog);
 const U = {};
@@ -144,6 +153,7 @@ texture(3, gl.TEXTURE_2D); // background image or video
 texture(5, gl.TEXTURE_2D); // the person's silhouette; its mipmaps tell how deep inside the body a pixel is
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
 gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+const hudTex = texture(6, gl.TEXTURE_2D); // the finger effects' 2D canvas
 const readFb = gl.createFramebuffer(), drawFb = gl.createFramebuffer();
 gl.uniform1i(U.live, 0);
 gl.uniform1i(U.ring, 1);
@@ -227,6 +237,8 @@ layout();
 const tracks = [], web = {}, swipe = {};
 const seq = { on: false, t0: -1e9, start: 0, dir: 1, face: null };
 const isSeq = () => S.effect === 'anime' || S.effect === 'collage';
+const isFingers = () => FINGER_EFFECTS.includes(S.effect);
+const fingerHands = {}, fingerFace = { cur: null, target: null, seen: 0 };
 let count = 0;
 
 function put(x, y, w, h, frame, kind) {
@@ -266,7 +278,7 @@ function snapshot() {
 let hadPicture = false;
 
 function draw() {
-  const webs = S.effect === 'webs', windows = S.effect === 'windows';
+  const webs = S.effect === 'webs', windows = S.effect === 'windows', fingers = isFingers();
   count = 0;
   if (windows) for (const t of tracks) {
     for (let k = Math.min(S.trail, t.n, HIST - 1); k >= 1; k--) {
@@ -277,7 +289,7 @@ function draw() {
     }
     put(t.x, t.y, t.w, t.h, -1, t.kind);
   }
-  const picture = windows ? count > 0 : webs ? !!web.pts : seq.on || performance.now() - seq.t0 < CUT_MS;
+  const picture = windows ? count > 0 : webs ? !!web.pts : fingers || seq.on || performance.now() - seq.t0 < CUT_MS;
   if (S.bg === 'desktop' && !picture && !hadPicture) return; // an empty layer stays as it is: nothing to composite
   hadPicture = picture;
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, inst, 0, count * STRIDE);
@@ -289,6 +301,7 @@ function draw() {
   if (S.bg === 'camera' && video.videoWidth) drawCamera();
   if (windows) gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
   else if (webs) { if (web.pts) drawWebs(); }
+  else if (fingers) drawFingers();
   else drawSeq();
 }
 
@@ -336,15 +349,17 @@ function drawSeq() {
   gl.useProgram(prog);
 }
 
-// The scene art is only painted the first time its effect is chosen.
+// The scene art is only painted the first time its effect is chosen, and again when its words change.
 const arts = {};
+let wordsTimer;
 function useArt() {
+  if (!isSeq()) return;
   if (!arts[S.effect]) {
     arts[S.effect] = texture(4, gl.TEXTURE_2D_ARRAY);
     gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, ART_W, ART_H, ART_LAYERS[S.effect]);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     let n = 0;
-    paintArt(S.effect, c => gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, n++, ART_W, ART_H, 1, gl.RGBA, gl.UNSIGNED_BYTE, c));
+    paintArt(S.effect, c => gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, n++, ART_W, ART_H, 1, gl.RGBA, gl.UNSIGNED_BYTE, c), S);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
   }
   gl.activeTexture(gl.TEXTURE4);
@@ -384,6 +399,34 @@ function drawWebs() {
   gl.useProgram(prog);
 }
 
+// The hands and face in px on screen, handed to fingers.js, whose 2D canvas then goes over the picture.
+function drawFingers() {
+  if (hud.width !== canvas.width || hud.height !== canvas.height) { hud.width = canvas.width; hud.height = canvas.height; }
+  const px = (x, y) => [(S.mirror ? 1 - x : x) * cam.w + cam.x, y * cam.h + cam.y];
+  const hands = (fingerHands.list ?? []).map(h => ({ id: h.id, p: Array.from({ length: 21 }, (_, i) => px(h.pts[i * 2], h.pts[i * 2 + 1])) }));
+  let face = null;
+  const f = fingerFace.cur;
+  if (f) {
+    const [x0, y] = px(f[0], f[1]), [x1] = px(f[0] + f[2], f[1]), x = Math.min(x0, x1), w = Math.abs(x1 - x0), h = f[3] * cam.h;
+    face = { x, y, w, h, cx: x + w / 2, mouth: f.length > 4 ? px(f[10], f[11]) : [x + w / 2, y + h * 0.68], eyes: f.length > 4 ? [px(f[4], f[5]), px(f[6], f[7])] : null };
+  }
+  fingersFrame(S.effect, { now: performance.now(), hands, face, W: canvas.width, H: canvas.height, S, sound: s => chan.postMessage({ sound: s }) });
+  gl.activeTexture(gl.TEXTURE6);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, hud);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.useProgram(hudProg);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.useProgram(prog);
+}
+
+// The face eases like the hands, and goes after a while unseen.
+function stepFace(now) {
+  if (!fingerFace.target || now - fingerFace.seen > 600) { fingerFace.cur = null; return; }
+  if (!fingerFace.cur || fingerFace.cur.length !== fingerFace.target.length) fingerFace.cur = fingerFace.target.slice();
+  fingerFace.cur.forEach((v, i) => { fingerFace.cur[i] += (fingerFace.target[i] - v) * 0.5; });
+}
+
 const worker = new Worker('tracker.worker.js');
 let busy = false, detectMs = 0, lastError = '';
 
@@ -405,6 +448,14 @@ worker.onmessage = ({ data }) => {
   if (isSeq()) {
     if (data.face) seq.face = data.face[0] ?? null;
     return; // the tracks below are the windows effect's
+  }
+  if (isFingers()) {
+    if (data.marks) seeMarks(fingerHands, data.marks, performance.now());
+    if (data.face?.length) {
+      fingerFace.target = [...data.face[0], ...(data.kp?.[0] ?? [])];
+      fingerFace.seen = performance.now();
+    }
+    return;
   }
   for (const kind of KINDS) {
     if (!S[kind]) continue;
@@ -431,13 +482,15 @@ function onFrame() {
   if (++frameNo % 2 === 0 && S.trail > 0 && S.effect === 'windows') snapshot();
   stepTracks(tracks, t0, 0.45);
   stepHands(web, t0, 0.6);
+  stepMarks(fingerHands, t0, 0.65);
+  stepFace(t0);
   feedTracker();
   draw();
   const t1 = performance.now();
   renderMs += (t1 - t0 - renderMs) * 0.1;
   frames++;
   if (t1 - statT > 500) {
-    chan.postMessage({ stats: { windows: tracks.length, hands: !!web.pts, scene: seq.on, fps: Math.round(frames * 1000 / (t1 - statT)), detectMs, renderMs, error: lastError } });
+    chan.postMessage({ stats: { windows: tracks.length, hands: !!web.pts, fingers: fingerHands.list?.length ?? 0, scene: seq.on, fps: Math.round(frames * 1000 / (t1 - statT)), detectMs, renderMs, error: lastError } });
     frames = 0;
     statT = t1;
   }
@@ -582,15 +635,26 @@ chan.onmessage = ({ data }) => {
   if (data.useCamera) useCamera();
   if (data.useVideo) useVideo(data.useVideo);
   if (data.seqToggle && isSeq()) toggleSeq(1);
+  if (data.lifeReset) resetLife();
   if (data.settings) {
     const changedDevice = data.settings.deviceId !== S.deviceId;
     const changedBg = data.settings.bg !== S.bg || data.settings.bgStamp !== S.bgStamp;
     const changedEffect = data.settings.effect !== S.effect;
+    const changedWords = data.settings.title !== S.title || data.settings.subtitle !== S.subtitle;
     Object.assign(S, data.settings);
     if (changedEffect) {
       seq.on = false;
       seq.t0 = -1e9;
-      if (isSeq()) useArt();
+      useArt();
+    }
+    if (changedWords && arts.anime) {
+      // Painting the eleven layers takes a moment: once the typing stops, not on every key.
+      clearTimeout(wordsTimer);
+      wordsTimer = setTimeout(() => {
+        gl.deleteTexture(arts.anime);
+        delete arts.anime;
+        useArt();
+      }, 300);
     }
     for (let i = tracks.length - 1; i >= 0; i--) if (!S[tracks[i].kind]) tracks.splice(i, 1);
     if (changedDevice && source === 'camera') useCamera();
@@ -599,7 +663,7 @@ chan.onmessage = ({ data }) => {
   }
 };
 
-if (isSeq()) useArt();
+useArt();
 loadBackground();
 useCamera();
 chan.postMessage({ ready: true });

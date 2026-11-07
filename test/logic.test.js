@@ -1,7 +1,7 @@
 // node --test test/logic.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { findBlobs, matchTracks, stepTracks, seeHands, stepHands, trackSwipe, seqFrame, coverScale, hexToRgb, TTL, MAX_TRACKS, SCENE_MS, SWIPE_REST } = require('../web/logic.js');
+const { findBlobs, matchTracks, stepTracks, seeHands, stepHands, trackSwipe, seqFrame, coverScale, hexToRgb, seeMarks, stepMarks, readHand, scaleNote, midiFreq, noteName, TTL, MAX_TRACKS, SCENE_MS, SWIPE_REST } = require('../web/logic.js');
 
 // One wrist moving by dx every 33 ms; returns the direction of each swipe it fired.
 function moveHand(sw, from, dx, frames, t0 = 0) {
@@ -148,4 +148,61 @@ test('the number of tracks is capped', () => {
   for (let i = 0; i < MAX_TRACKS + 5; i++) dets.push([(i % 8) / 8, (i >> 3) / 8, 0.01, 0.01]);
   matchTracks(tracks, 'motion', dets, 0);
   assert.strictEqual(tracks.length, MAX_TRACKS);
+});
+
+// A right hand facing the camera, wrist at the bottom, in px. Each finger is [knuckle, pip, dip, tip].
+function hand({ curl = [false, false, false, false], thumbOn = -1 } = {}) {
+  const p = [[0, 0], [-25, -20], [-45, -40], [-60, -60], [-75, -75]];
+  [-30, -10, 10, 30].forEach((x, i) => {
+    p.push([x, -90], [x, -120]);
+    p.push(...(curl[i] ? [[x, -95], [x, -70]] : [[x, -140], [x, -160]]));
+  });
+  if (thumbOn >= 0) { p[4] = p[[8, 12, 16, 20][thumbOn]].slice(); p[4][0] -= 4; p[3] = [p[4][0] - 15, p[4][1] + 20]; }
+  return p;
+}
+
+test('a hand reads as open, as a fist, as a pinch or as a thumb on one finger', () => {
+  const open = readHand(hand());
+  assert.ok(open.open && !open.fist && !open.pinch);
+  assert.strictEqual(open.count, 4);
+  assert.strictEqual(open.touch, -1);
+  const fist = readHand(hand({ curl: [true, true, true, true] }));
+  assert.ok(fist.fist && !fist.open && !fist.pinch && fist.count === 0);
+  const pinch = readHand(hand({ thumbOn: 0 }));
+  assert.ok(pinch.pinch && !pinch.open);
+  assert.strictEqual(pinch.touch, 0);
+  assert.strictEqual(readHand(hand({ thumbOn: 2 })).touch, 2, 'the ring finger');
+  assert.ok(!readHand(hand({ thumbOn: 2 })).pinch, 'only the index pinches');
+});
+
+test('a pinch needs to open wider to end than to start', () => {
+  const p = hand();
+  p[4] = [p[8][0] - 0.38 * 90, p[8][1]]; // between the two thresholds
+  assert.ok(!readHand(p).pinch, 'not yet a pinch');
+  assert.ok(readHand(p, { pinch: true }).pinch, 'still a pinch');
+  assert.strictEqual(readHand(p, { touch: 0 }).touch, 0);
+  assert.strictEqual(readHand(p).touch, -1);
+});
+
+test('hands keep their id while they move, and go after a while unseen', () => {
+  const hs = {}, at = (x) => Array.from({ length: 42 }, (_, i) => i % 2 ? 0.5 : x);
+  seeMarks(hs, [at(0.2), at(0.8)], 0);
+  const [a, b] = hs.list.map(h => h.id);
+  seeMarks(hs, [at(0.78), at(0.25)], 30);
+  assert.deepStrictEqual(hs.list.map(h => h.id), [a, b]);
+  assert.strictEqual(hs.list[0].target[0], 0.25);
+  stepMarks(hs, 31, 0.5);
+  assert.strictEqual(hs.list[0].pts[0], 0.225);
+  seeMarks(hs, [at(0.25)], 200);
+  stepMarks(hs, 30 + TTL + 1, 0.5);
+  assert.deepStrictEqual(hs.list.map(h => h.id), [a], 'the unseen hand went');
+});
+
+test('scale steps wrap into octaves', () => {
+  assert.strictEqual(scaleNote('mayor', 0), 60);
+  assert.strictEqual(scaleNote('mayor', 5), 72);
+  assert.strictEqual(scaleNote('mayor', -1), 57);
+  assert.strictEqual(scaleNote('blues', 6), 72, 'six notes');
+  assert.strictEqual(midiFreq(69), 440);
+  assert.strictEqual(noteName(scaleNote('mayor', 3)), 'Sol');
 });

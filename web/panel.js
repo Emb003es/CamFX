@@ -1,7 +1,9 @@
 const S = loadSettings();
 const chan = new BroadcastChannel('camfx');
 const $ = id => document.getElementById(id);
-const invoke = (...args) => window.__TAURI__.core.invoke(...args);
+// Inside the Windows app; otherwise a plain web page, without the desktop layer and saving recordings as downloads.
+const TAURI = !!window.__TAURI__;
+const invoke = (...args) => TAURI ? window.__TAURI__.core.invoke(...args) : Promise.resolve();
 const FACE_BODY = ['face', 'body', 'eyes', 'mouth'];
 
 function save() {
@@ -18,15 +20,17 @@ function syncFaceBody() {
 function paintSlider(el) {
   const output = el.parentElement.querySelector('output');
   el.style.setProperty('--p', `${(el.value - el.min) / (el.max - el.min) * 100}%`);
-  output.textContent = el.step === '1' ? el.value : `${Math.round(el.value * 100)} %`;
+  output.textContent = el.dataset.max && el.value === el.max ? el.dataset.max
+    : el.step === '1' ? el.value + (el.dataset.unit ?? '') : `${Math.round(el.value * 100)} %`;
 }
 
 for (const el of document.querySelectorAll('[data-k]')) {
-  const k = el.dataset.k, isBox = el.type === 'checkbox';
-  if (isBox) el.checked = S[k]; else { el.value = S[k]; paintSlider(el); }
+  const k = el.dataset.k, isBox = el.type === 'checkbox', isRange = el.type === 'range';
+  if (isBox) el.checked = S[k]; else el.value = S[k];
+  if (isRange) paintSlider(el);
   el.oninput = () => {
-    S[k] = isBox ? el.checked : +el.value;
-    if (!isBox) paintSlider(el);
+    S[k] = isBox ? el.checked : isRange ? +el.value : el.value;
+    if (isRange) paintSlider(el);
     save();
     syncFaceBody();
   };
@@ -61,6 +65,7 @@ for (const b of document.querySelectorAll('[data-effect]')) {
 }
 showEffect();
 $('seqToggle').onclick = () => chan.postMessage({ seqToggle: true });
+$('lifeReset').onclick = () => chan.postMessage({ lifeReset: true });
 
 // Source
 
@@ -135,14 +140,25 @@ $('bgFile').onchange = async e => {
 const RECORD_TYPES = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'];
 let rec = null;
 
-async function listMics() {
+// ask: whether to ask for the microphone. The app may at once; a web page waits until the user picks one,
+// rather than greet every visitor with a permission prompt.
+async function listMics(ask = TAURI) {
   // Device names only show once the page has asked for a microphone; nothing is captured here.
-  try { (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach(t => t.stop()); } catch {}
-  const mics = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
-  $('mic').replaceChildren(new Option('Sin sonido', ''), ...mics.map(d => new Option(d.label || 'Micrófono', d.deviceId)));
+  if (ask) try { (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach(t => t.stop()); } catch {}
+  const mics = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput' && d.deviceId);
+  const named = mics.some(d => d.label);
+  $('mic').replaceChildren(new Option('Sin micrófono', ''), ...(named ? mics.map(d => new Option(d.label || 'Micrófono', d.deviceId)) : [new Option('Micrófono…', 'ask')]));
   $('mic').value = mics.some(d => d.deviceId === S.micId) ? S.micId : '';
+  return named ? mics : [];
 }
-$('mic').onchange = e => { S.micId = e.target.value; save(); };
+$('mic').onchange = async e => {
+  if (e.target.value === 'ask') {
+    const mics = await listMics(true);
+    $('mic').value = mics[0]?.deviceId ?? '';
+  }
+  S.micId = $('mic').value;
+  save();
+};
 navigator.mediaDevices.addEventListener('devicechange', listMics);
 
 function clock(ms) {
@@ -159,26 +175,31 @@ async function startRecording() {
   $('recError').textContent = '';
   $('saved').hidden = true;
   const desktop = S.bg === 'desktop';
-  let stream;
+  let stream, audio;
   try {
     stream = desktop
       // shortcut: the auto-accept flag always picks the first monitor; CamFX must be there, add a picker if that bothers
       ? await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false })
       : $('stage').contentDocument.getElementById('c').captureStream(30);
+    // The effects' own sounds and the microphone, mixed into one track: a recording keeps only one.
     // Voice and instruments: the browser's call-oriented clean-up would ruin them.
-    if (S.micId) {
-      const mic = await navigator.mediaDevices.getUserMedia({
+    if (S.micId || FINGER_EFFECTS.includes(S.effect)) {
+      const mic = S.micId ? await navigator.mediaDevices.getUserMedia({
         audio: { deviceId: { exact: S.micId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-      });
-      stream.addTrack(mic.getAudioTracks()[0]);
+      }) : null;
+      audio = Sound.track(mic);
+      stream.addTrack(audio.track);
     }
     const mimeType = RECORD_TYPES.find(t => MediaRecorder.isTypeSupported(t));
-    const path = await invoke('start_recording', { name: fileName(mimeType.startsWith('video/mp4') ? 'mp4' : 'webm') });
+    const name = fileName(mimeType.startsWith('video/mp4') ? 'mp4' : 'webm');
+    const path = TAURI ? await invoke('start_recording', { name }) : name;
     if (desktop) await invoke('protect_panel', { on: true });
 
     rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12e6 });
     let writes = Promise.resolve();
+    const chunks = [];
     rec.ondataavailable = e => {
+      if (!TAURI) { chunks.push(e.data); return; }
       writes = writes
         .then(() => e.data.arrayBuffer())
         .then(buffer => invoke('append_recording', buffer))
@@ -193,13 +214,21 @@ async function startRecording() {
       rec = null;
       clearInterval(timer);
       stream.getTracks().forEach(t => t.stop());
+      audio?.stop();
       await writes;
       await invoke('finish_recording');
       if (desktop) await invoke('protect_panel', { on: false });
+      if (!TAURI) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob(chunks, { type: mimeType }));
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      }
       document.body.classList.remove('rec');
       $('rec').textContent = 'Grabar';
       $('time').textContent = '00:00';
-      $('savedPath').textContent = $('savedPath').title = path;
+      $('savedPath').textContent = $('savedPath').title = TAURI ? path : `Descargado: ${name}`;
       $('saved').hidden = false;
     };
     rec.start(1000); // chunks to disk every second, so a long take never piles up in memory
@@ -207,6 +236,7 @@ async function startRecording() {
     $('rec').textContent = 'Detener';
   } catch (err) {
     stream?.getTracks().forEach(t => t.stop());
+    audio?.stop();
     $('recError').textContent = `No se pudo grabar: ${err.message ?? err}`;
   }
 }
@@ -217,6 +247,7 @@ $('reveal').onclick = () => invoke('reveal_recording');
 // Messages from whichever page is drawing
 
 chan.onmessage = ({ data }) => {
+  if (data.sound) Sound.play(data.sound);
   // A new renderer starts on the camera: hand it the video it should be showing.
   if (data.ready && videoUrl) chan.postMessage({ useVideo: videoUrl });
   if (data.status) {
@@ -231,11 +262,19 @@ chan.onmessage = ({ data }) => {
     const s = data.stats;
     const seen = S.effect === 'windows' ? `${s.windows} ${s.windows === 1 ? 'ventana' : 'ventanas'}`
       : S.effect === 'webs' ? (s.hands ? 'dos manos' : 'faltan manos')
+      : FINGER_EFFECTS.includes(S.effect) ? ['sin manos', 'una mano', 'dos manos'][Math.min(s.fingers, 2)]
       : (s.scene ? 'en escena' : 'cámara');
     $('stat').textContent = `${s.fps} fps · ${seen}`;
     if (s.error) $('error').textContent = s.error;
   }
 };
+
+// A web page has no desktop to float over, nor a folder to open.
+if (!TAURI) {
+  document.querySelector('[data-bg=desktop]').remove();
+  $('reveal').remove();
+  if (S.bg === 'desktop') S.bg = 'color';
+}
 
 showTab(false);
 listMics();

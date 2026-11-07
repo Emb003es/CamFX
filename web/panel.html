@@ -47,6 +47,9 @@
   .seg button.on { background: var(--raised); color: var(--text); }
 
   select { width: 100%; padding: 6px 8px; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; }
+  .field { display: grid; gap: 4px; margin-bottom: 8px; color: var(--muted); }
+  input[type=text] { width: 100%; padding: 6px 8px; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; color: var(--text); user-select: text; }
+  input[type=text]:hover { border-color: #4a4a52; }
   .file { display: block; position: relative; padding: 7px; text-align: center; background: var(--raised); border: 1px dashed #4a4a52; border-radius: 8px; }
   .file:hover { border-color: var(--accent); }
   .file:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -164,6 +167,45 @@
     <span><b>Collage</b><small>Pasa la mano y tu silueta entra en un collage</small></span>
   </button>
 
+  <h2 class="spaced">Con los dedos</h2>
+  <button class="effect" data-effect="music">
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <rect width="44" height="44" fill="#16122a"/>
+      <g stroke-width="3.500" stroke-linecap="round"><path d="M7 37V27" stroke="#ff5ea8"/><path d="M13 37V22" stroke="#ff8a3d"/><path d="M19 37V25" stroke="#ffd23f"/><path d="M25 37V19" stroke="#6cff8a"/><path d="M31 37V23" stroke="#3fd6ff"/><path d="M37 37V28" stroke="#b56bff"/></g>
+      <path d="M26 6v9.500" stroke="#fff" stroke-width="2"/><path d="M26 6l8 2.500v3L26 9" fill="#fff"/><circle cx="23.500" cy="15.500" r="3" fill="#fff"/>
+    </svg>
+    <span><b>Música</b><small>Cada dedo es una nota: tócalo con el pulgar</small></span>
+  </button>
+  <button class="effect" data-effect="life">
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <rect width="44" height="44" fill="#ffd6e7"/>
+      <rect x="4" y="5" width="23" height="15" rx="7.500" fill="#fff"/><path d="M10 19l-2 6 7-5Z" fill="#fff"/>
+      <path d="M15.500 16s-5-3-5-6a2.500 2.500 0 0 1 5-1 2.500 2.500 0 0 1 5 1c0 3-5 6-5 6Z" fill="#ff6b9d"/>
+      <circle cx="32" cy="32" r="9" fill="#fff"/><circle cx="32" cy="33" r="5" fill="#ff5e5e"/><path d="M32 28c1-2 3-2 3-2" stroke="#3a8a3a" stroke-width="1.500" fill="none"/>
+      <rect x="5" y="31" width="16" height="3" rx="1.500" fill="#ff9f43"/><rect x="5" y="36" width="11" height="3" rx="1.500" fill="#3fa9ff"/>
+    </svg>
+    <span><b>Tu vida</b><small>Estado, deseos y cosas que te das con los dedos</small></span>
+  </button>
+  <button class="effect" data-effect="paint">
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <rect width="44" height="44" fill="#0b0b14"/>
+      <path d="M6 30c5-14 10-14 12-4s7 10 10-2 8-12 10-6" fill="none" stroke="#b56bff" stroke-width="7" stroke-linecap="round" opacity=".35"/>
+      <path d="M6 30c5-14 10-14 12-4s7 10 10-2 8-12 10-6" fill="none" stroke="#3fd6ff" stroke-width="3.500" stroke-linecap="round"/>
+      <path d="M6 30c5-14 10-14 12-4s7 10 10-2 8-12 10-6" fill="none" stroke="#fff" stroke-width="1.200" stroke-linecap="round"/>
+      <circle cx="38" cy="18" r="3" fill="none" stroke="#fff" stroke-width="1.500"/>
+    </svg>
+    <span><b>Pintura de luz</b><small>Pellizca el aire y dibuja con neón</small></span>
+  </button>
+  <button class="effect" data-effect="energy">
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <defs><radialGradient id="orbIcon"><stop offset="0" stop-color="#fff"/><stop offset=".3" stop-color="#d9c8ff"/><stop offset=".6" stop-color="#7b5cff" stop-opacity=".6"/><stop offset="1" stop-color="#7b5cff" stop-opacity="0"/></radialGradient></defs>
+      <rect width="44" height="44" fill="#0b0b14"/>
+      <circle cx="22" cy="22" r="17" fill="url(#orbIcon)"/>
+      <path d="M22 22 9 10l4 1-6-6M22 22l13 13-1-4 5 4M22 22l14-11-4 1 5-5" fill="none" stroke="#e6ecff" stroke-width="1.200"/>
+    </svg>
+    <span><b>Bola de energía</b><small>Cárgala entre las manos y suéltala</small></span>
+  </button>
+
   <h2>Origen</h2>
   <div class="seg" role="group" aria-label="Origen">
     <button id="tabCam">Cámara</button>
@@ -231,6 +273,49 @@
     <label class="slider" style="margin-top: 10px"><span>Sensibilidad del gesto</span><output></output><input type="range" data-k="gesture" min="0" max="1" step="0.01"></label>
     <button id="seqToggle" class="plain">Cambiar ahora</button>
   </div>
+  <div data-for="anime">
+    <h2 class="spaced">Tu texto</h2>
+    <label class="field">Título <input type="text" data-k="title" maxlength="12" spellcheck="false" placeholder="EMBO"></label>
+    <label class="field">Subtítulo <input type="text" data-k="subtitle" maxlength="16" spellcheck="false" placeholder="SEQUENCE"></label>
+  </div>
+  <div data-for="music">
+    <h2>Cómo se usa</h2>
+    <p class="hint">Toca la punta de un dedo con la del pulgar: cada dedo es una nota, y de izquierda a derecha van de grave a agudo. Sube la mano para tocar una octava más alta; bájala para una más baja.</p>
+    <h2 class="spaced">Sonido</h2>
+    <label class="field">Instrumento
+      <select data-k="instrument">
+        <option value="piano">Piano suave</option>
+        <option value="synth">Sintetizador</option>
+        <option value="bells">Campanas</option>
+        <option value="drums">Batería</option>
+      </select>
+    </label>
+    <label class="field">Escala
+      <select data-k="scale">
+        <option value="mayor">Pentatónica mayor</option>
+        <option value="menor">Pentatónica menor</option>
+        <option value="blues">Blues</option>
+        <option value="japonesa">Japonesa</option>
+      </select>
+    </label>
+  </div>
+  <div data-for="life">
+    <h2>Cómo se usa</h2>
+    <p class="hint">Pellizca con el pulgar y el índice un objeto del menú de la derecha y llévalo a tu boca, a tu cabeza o a tu cara. Los globos se explotan con el dedo. Acaríciate la cabeza con la mano abierta. Si cumples sus deseos, sube de nivel.</p>
+    <label class="field" style="margin-top: 10px">Nombre <input type="text" data-k="name" maxlength="14" spellcheck="false"></label>
+    <button id="lifeReset" class="plain">Empezar de cero</button>
+  </div>
+  <div data-for="paint">
+    <h2>Cómo se usa</h2>
+    <p class="hint">Junta el pulgar y el índice para pintar. Con la mano abierta borras lo que tocas. Cierra el puño un segundo para borrarlo todo.</p>
+    <label class="slider" style="margin-top: 10px"><span>Duración del trazo</span><output></output><input type="range" data-k="ink" min="1" max="30" step="1" data-unit=" s" data-max="Siempre"></label>
+    <label class="row">Caleidoscopio <input type="checkbox" data-k="kaleido"></label>
+  </div>
+  <div data-for="energy">
+    <h2>Cómo se usa</h2>
+    <p class="hint">Abre las dos manos, una frente a la otra: la bola se carga entre ellas y crece cuanto más las separas. Cierra los dos puños para soltarla. Con una sola mano abierta tienes una chispa en la palma.</p>
+  </div>
+  <p data-for="music life paint energy" class="hint" id="soundHint" style="margin-top: 12px">El sonido sale de esta ventana y se graba con el vídeo.</p>
 
   <h2 class="spaced">Aspecto</h2>
   <label class="row">Espejo <input type="checkbox" data-k="mirror"></label>
@@ -240,5 +325,6 @@
   </div>
 </aside>
 <script src="logic.js"></script>
+<script src="sound.js"></script>
 <script src="panel.js"></script>
 </html>

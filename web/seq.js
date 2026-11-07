@@ -162,7 +162,11 @@ function tallText(c, text, x, y, h, w, fill) {
   c.restore();
 }
 
-function paintAnime(layer) {
+// The lettering is the user's: a word as tall as the original's gets a width in proportion to its length.
+function paintAnime(layer, { title, subtitle }) {
+  title = (title.trim() || 'EMBO').toUpperCase();
+  subtitle = (subtitle.trim() || 'SEQUENCE').toUpperCase();
+  const wide = (text, per, max) => Math.min(max, per * [...text].length);
   const RED = '#e9134f', BLACK = '#0a0212', GREEN = '#14ee6c', BLUE = '#0f5be0', PURPLE = '#9b4be8', DARK = '#2f2f31';
   const r = rng(7);
   const W = ART_W, H = ART_H;
@@ -219,9 +223,9 @@ function paintAnime(layer) {
   layer(c => stage(c, '#e6e6e6', '#c4c4c4'));
   // 3: its green lettering
   layer(c => {
-    tallText(c, 'EMBO', 50, 650, 760, 640, '#3df08e');
+    tallText(c, title, 50, 650, 760, wide(title, 160, 1400), '#3df08e');
     tallText(c, 'OPENING', 1500, 950, 46, 150, '#3df08e');
-    tallText(c, 'SEQUENCE', 1500, 1120, 210, 390, '#3df08e');
+    tallText(c, subtitle, 1500, 1120, 210, wide(subtitle, 49, 400), '#3df08e');
   });
   // 4: the eyes up close
   layer(c => {
@@ -284,12 +288,12 @@ function paintAnime(layer) {
   layer(c => {
     c.save();
     c.transform(1, 0, -.28, 1, 0, 0);
-    tallText(c, 'EMBO', 780, 830, 420, 760, '#ffd800');
+    tallText(c, title, 780, 830, 420, wide(title, 190, 1050), '#ffd800');
     c.restore();
     poly(c, '#e8222f', [[720, 860], [1740, 830], [1680, 960], [670, 985]]);
     c.save();
     c.transform(1, -.03, -.28, 1, 0, 0);
-    tallText(c, 'SEQUENCE', 1000, 980, 110, 760, BLACK);
+    tallText(c, subtitle, 1000, 980, 110, wide(subtitle, 95, 760), BLACK);
     c.restore();
     for (let i = 0; i < 12; i++) poly(c, '#f59a0c', [[470 + i * 20, 985], [480 + i * 20, 985], [510 + i * 20, 860], [500 + i * 20, 860]]);
   });
@@ -299,7 +303,7 @@ function paintAnime(layer) {
     c.fillRect(0, 0, W, H);
     poly(c, RED, [[0, 790], [1000, 1080], [0, 1080]]);
     poly(c, RED, [[1180, 0], [1920, 0], [1920, 500]]);
-    tallText(c, 'EMBO', 150, 1000, 1200, 1620, '#fff');
+    tallText(c, title, 150, 1000, 1200, wide(title, 405, 1620), '#fff');
   });
   // 9: a small version of the mask that fits on a face, 1200 wide around the centre of the layer
   layer(c => {
@@ -447,8 +451,8 @@ function paintCollage(layer) {
   });
 }
 
-// Hands each finished layer over as a canvas.
-function paintArt(effect, emit) {
+// Hands each finished layer over as a canvas. words: the anime's title and subtitle.
+function paintArt(effect, emit, words) {
   const canvas = document.createElement('canvas');
   canvas.width = ART_W;
   canvas.height = ART_H;
@@ -459,5 +463,5 @@ function paintArt(effect, emit) {
     paint(c);
     emit(canvas);
   };
-  (effect === 'anime' ? paintAnime : paintCollage)(layer);
+  (effect === 'anime' ? paintAnime : paintCollage)(layer, words);
 }
